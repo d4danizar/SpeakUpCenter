@@ -14,7 +14,8 @@ export const authOptions: NextAuthOptions = {
       },
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) {
-          throw new Error("Invalid credentials");
+          console.log("LOGIN ERROR: Email atau password kosong.");
+          return null;
         }
 
         const user = await prisma.user.findUnique({
@@ -22,21 +23,31 @@ export const authOptions: NextAuthOptions = {
         });
 
         if (!user) {
-          throw new Error("Invalid credentials");
+          console.log(`LOGIN GAGAL: User dengan email "${credentials.email}" tidak ditemukan di database.`);
+          return null;
         }
 
         if (typeof credentials.password !== 'string') {
-           throw new Error('Password is not a string!');
+          console.log("LOGIN ERROR: Password bukan string:", typeof credentials.password);
+          return null;
         }
 
-        // Proper bcrypt comparison for hashed passwords
+        // Proper bcryptjs comparison for hashed passwords
         const plainPassword = credentials.password.trim();
-        const isValid = await bcrypt.compare(plainPassword, user.passwordHash);
-        
-        if (!isValid) {
-          throw new Error("Invalid credentials");
+        let isValid = false;
+        try {
+          isValid = await bcrypt.compare(plainPassword, user.passwordHash);
+        } catch (bcryptErr) {
+          console.error("LOGIN ERROR: bcrypt.compare() melempar exception:", bcryptErr);
+          return null;
         }
 
+        if (!isValid) {
+          console.log(`LOGIN GAGAL: Password tidak cocok untuk email "${credentials.email}". Hash di DB: ${user.passwordHash.substring(0, 10)}...`);
+          return null;
+        }
+
+        console.log(`LOGIN SUKSES: Memasukkan user ${user.email} (role: ${user.role})`);
         return {
           id: user.id,
           email: user.email,
