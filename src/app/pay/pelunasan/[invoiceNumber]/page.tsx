@@ -107,7 +107,7 @@ export default async function PelunasanPage({
             {amountFormatted}
           </div>
           <div className="text-sm text-slate-500 font-medium">
-            Program: {invoice.programName}
+            Program: {(invoice as any).programName || '-'}
           </div>
           <div className="text-xs font-mono text-slate-400 mt-1">
             {invoice.invoiceNumber}

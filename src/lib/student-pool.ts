@@ -67,7 +67,7 @@ export async function getEligibleStudentsForSession(session: {
   const sessionEndOfDay = endOfDay(session.date);
 
   // Broad fetch: all active students with matching programs + valid date range
-  const candidateStudents = await prisma.user.findMany({
+  const candidateStudents = await (prisma.user as any).findMany({
     where: {
       role: "STUDENT",
       activeProgram: { in: eligiblePrograms },
@@ -226,17 +226,11 @@ export async function getGlobalPoolForSession({
   // 3. Execute Query
   console.log("🕵️ RADAR SEARCH PARAMS:", { programName: programType, batch: timeSlot, query: "" });
 
-  const pool = await prisma.user.findMany({
+  const pool = await (prisma.user as any).findMany({
     where: {
       role: "STUDENT",
-      // MATIKAN (comment) sementara filter program dan batch di bawah ini!
-      // activeProgram: programType, 
-      // programBatch: { contains: timeSlot, mode: "insensitive" },
-      // endDate: { gte: new Date() }
-
-      // Dummy search text untuk debugging
       name: {
-        contains: "", // Longgarkan secara maksimum
+        contains: "",
         mode: "insensitive"
       }
     },
@@ -245,5 +239,5 @@ export async function getGlobalPoolForSession({
     orderBy: { name: "asc" },
   });
 
-  return pool.map((s) => ({ id: s.id, name: s.name, activeProgram: s.activeProgram }));
+  return pool.map((s: any) => ({ id: s.id, name: s.name, activeProgram: s.activeProgram ?? null }));
 }

@@ -14,6 +14,15 @@ export async function runDailyAutoAbsence() {
     const todaysSessions = await prisma.session.findMany({
       where: {
         date: { gte: todayStart, lte: todayEnd }
+      },
+      include: {
+        schedule: {
+          include: {
+            enrollments: {
+              select: { studentId: true }
+            }
+          }
+        }
       }
     });
 
@@ -25,42 +34,34 @@ export async function runDailyAutoAbsence() {
 
     // 3. Loop setiap sesi hari ini
     for (const session of todaysSessions) {
-      // 4. Cari murid yang ELIGIBLE untuk sesi ini (Gym Membership logic)
-      const eligibleStudents = await prisma.user.findMany({
-        where: {
-          role: "STUDENT",
-          activeProgram: session.programType,
-          programBatch: { contains: session.timeSlot, mode: "insensitive" }, 
-          endDate: { gte: todayStart }, // Masa aktif masih berlaku
-        },
-        select: { id: true }
-      });
+      // 4. Ambil daftar siswa yang terdaftar di jadwal (ClassSchedule) sesi ini via Enrollment
+      const enrolledStudentIds = session.schedule.enrollments.map(e => e.studentId);
 
-      // 5. Loop setiap murid yang eligible
-      for (const student of eligibleStudents) {
+      // 5. Loop setiap murid yang terdaftar
+      for (const studentId of enrolledStudentIds) {
         // Cek apakah murid ini sudah punya record absensi di sesi ini
         const existingAttendance = await prisma.attendance.findFirst({
-          where: { sessionId: session.id, studentId: student.id }
+          where: { sessionId: session.id, studentId }
         });
 
-        // 6. Jika BELUM DIABSEN (Bolos tanpa pamit) -> HUKUM ALPA!
+        // 6. Jika BELUM DIABSEN (Bolos tanpa pamit) → HUKUM ALPA!
         if (!existingAttendance) {
           await prisma.attendance.create({
             data: {
               sessionId: session.id,
-              studentId: student.id,
+              studentId,
               status: "ABSENT",
-              tutorNotes: "Auto-Alpa by System", // Penanda bahwa ini hasil sapu bersih
+              tutorNotes: "Auto-Alpa by System",
             }
           });
           alpaCount++;
         }
       }
-      
-      // Tandai sesi sebagai selesai secara sistem jika belum
+
+      // Tandai sesi sebagai selesai secara sistem
       await prisma.session.update({
-         where: { id: session.id },
-         data: { isCompleted: true }
+        where: { id: session.id },
+        data: { isCompleted: true }
       });
     }
 

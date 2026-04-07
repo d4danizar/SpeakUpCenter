@@ -94,7 +94,7 @@ export default async function PrintInvoicePage({ params }: { params: Promise<{ i
         </thead>
         <tbody className="divide-y divide-slate-100">
           <tr>
-            <td className="py-4 px-3 text-sm font-medium text-slate-800">{invoice.programName}</td>
+            <td className="py-4 px-3 text-sm font-medium text-slate-800">{(invoice as any).programName || 'Program SpeakUp Center'}</td>
             <td className="py-4 px-3 text-sm font-bold text-right text-slate-800">
               Rp {invoice.paidAmount.toLocaleString("id-ID")}
             </td>

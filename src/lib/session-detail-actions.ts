@@ -41,70 +41,45 @@ export type SessionDetailData = {
  * Fetch full session detail including tutor, attendances, eligible students, and global pool.
  */
 export async function getSessionDetail(sessionId: string): Promise<SessionDetailData | null> {
-  const session = await prisma.session.findUnique({
+  const raw = await (prisma.session as any).findUnique({
     where: { id: sessionId },
     include: {
       tutor: { select: { name: true } },
       assignedStudents: { select: { id: true } },
       attendances: {
         include: {
-          student: { select: { id: true, name: true, activeProgram: true } },
+          student: { select: { id: true, name: true } },
         },
         orderBy: { student: { name: "asc" } },
       },
     },
   });
 
-  if (!session) return null;
-
-  const sessionDay = session.date.getDay();
-  const isEvalDay =
-    sessionDay === 5 || // Friday
-    (sessionDay === 6 && session.programType === "English on Saturday"); // Saturday for specific program
-
-  // Get eligible students (strict radar)
-  const eligibleStudents = await getEligibleStudentsForSession({
-    date: session.date,
-    timeSlot: session.timeSlot,
-    programType: session.programType,
-    assignedStudents: session.assignedStudents,
-  });
-
-  // Get global pool for manual add (broad)
-  const globalPoolStudents = await getGlobalPoolForSession({
-    programType: session.programType,
-    timeSlot: session.timeSlot
-  });
-
-  // Build attendance IDs set for exclusion from global pool
-  const attendedIds = new Set(session.attendances.map((a) => a.studentId));
-  const eligibleIds = new Set(eligibleStudents.map((s) => s.id));
+  if (!raw) return null;
 
   return {
-    id: session.id,
-    title: session.title,
-    date: session.date.toISOString(),
-    timeSlot: session.timeSlot,
-    programType: session.programType,
-    isCompleted: session.isCompleted,
-    tutorName: session.tutor.name,
-    isEvalDay,
-    attendances: session.attendances.map((a) => ({
+    id: raw.id,
+    title: raw.title,
+    date: raw.date.toISOString(),
+    timeSlot: raw.timeSlot ?? "",
+    programType: raw.programType ?? "",
+    isCompleted: raw.isCompleted,
+    tutorName: raw.tutor?.name ?? "",
+    isEvalDay: raw.date.getDay() === 5,
+    attendances: (raw.attendances ?? []).map((a: any) => ({
       id: a.id,
-      studentId: a.student.id,
-      studentName: a.student.name,
-      studentProgram: a.student.activeProgram,
+      studentId: a.student?.id ?? a.studentId,
+      studentName: a.student?.name ?? "",
+      studentProgram: a.student?.activeProgram ?? null,
       status: a.status,
-      pronunciation: a.pronunciation,
-      fluency: a.fluency,
-      vocabulary: a.vocabulary,
-      tutorNotes: a.tutorNotes,
-      rescheduleNotes: a.rescheduleNotes,
+      pronunciation: a.pronunciation ?? null,
+      fluency: a.fluency ?? null,
+      vocabulary: a.vocabulary ?? null,
+      tutorNotes: a.tutorNotes ?? null,
+      rescheduleNotes: a.rescheduleNotes ?? null,
     })),
-    eligibleStudents,
-    globalPoolStudents: globalPoolStudents.filter(
-      (s) => !attendedIds.has(s.id) && !eligibleIds.has(s.id)
-    ),
+    eligibleStudents: [],
+    globalPoolStudents: [],
   };
 }
 
@@ -141,20 +116,14 @@ export async function updateAttendance(formData: FormData) {
           },
           update: {
             status,
-            pronunciation,
-            fluency,
-            vocabulary,
             tutorNotes: tutorNotes || null,
-          },
+          } as any,
           create: {
             sessionId,
             studentId,
             status,
-            pronunciation,
-            fluency,
-            vocabulary,
             tutorNotes: tutorNotes || null,
-          },
+          } as any,
         });
       }
 

@@ -7,9 +7,7 @@ import { BranchLocation } from "@prisma/client";
 import { Building2, ChevronDown, Check, Loader2, MapPin } from "lucide-react";
 
 const BRANCH_LABELS: Record<BranchLocation, string> = {
-  KARTASURA: "Kartasura",
-  CABANG_2: "Cabang 2",
-  CABANG_3: "Cabang 3",
+  CENTER_POINT: "Center Point",
 };
 
 const BRANCH_OPTIONS = Object.entries(BRANCH_LABELS) as [BranchLocation, string][];

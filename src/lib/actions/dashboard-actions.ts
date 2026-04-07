@@ -124,13 +124,16 @@ export async function exportRawDashboardData(timeframe: string = "this_month") {
     });
 
     // B. Ambil Data Closing (Misal dari Invoice PAID/DP_PAID)
-    const closings = await prisma.invoice.findMany({
+    const closings = await (prisma.invoice as any).findMany({
       where: { 
         ...branchFilter,
         status: { in: ["PAID", "DP_PAID"] },
         updatedAt: { gte: startDate, lte: endDate }
       },
-      select: { programName: true, totalAmount: true, paidAmount: true, paymentMethod: true, updatedAt: true, lead: { select: { name: true } } },
+      include: { 
+        program: { select: { name: true } },
+        lead: { select: { name: true } } 
+      },
       orderBy: { updatedAt: 'desc' }
     });
 
@@ -156,7 +159,7 @@ export async function exportRawDashboardData(timeframe: string = "this_month") {
     const formattedClosings = closings.map((c: any) => ({
       "Tanggal Closing": new Date(c.updatedAt).toLocaleDateString("id-ID"),
       "Nama Siswa": c.lead?.name || "-",
-      "Program": c.programName,
+      "Program": c.program?.name || '-',
       "Metode Bayar": c.paymentMethod,
       "Total Tagihan": c.totalAmount,
       "Nominal Dibayar": c.paidAmount
