@@ -13,41 +13,45 @@ export const authOptions: NextAuthOptions = {
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials) {
+        console.log("==== MULAI PROSES LOGIN ====");
+        console.log("1. Email input:", credentials?.email);
+
         if (!credentials?.email || !credentials?.password) {
-          console.log("LOGIN ERROR: Email atau password kosong.");
-          return null;
+          throw new Error("KREDENSIAL_KOSONG: Email atau password tidak dikirim.");
         }
 
-        const user = await prisma.user.findUnique({
-          where: { email: credentials.email },
-        });
-
-        if (!user) {
-          console.log(`LOGIN GAGAL: User dengan email "${credentials.email}" tidak ditemukan di database.`);
-          return null;
+        let user;
+        try {
+          user = await prisma.user.findUnique({
+            where: { email: credentials.email },
+          });
+          console.log("2. User ditemukan di DB?:", !!user);
+        } catch (dbError) {
+          console.error("CRITICAL DB ERROR DI VERCEL:", dbError);
+          throw new Error("GAGAL_KONEK_DATABASE: " + String(dbError));
         }
 
-        if (typeof credentials.password !== 'string') {
-          console.log("LOGIN ERROR: Password bukan string:", typeof credentials.password);
-          return null;
+        if (!user || !user.passwordHash) {
+          throw new Error("USER_TIDAK_DITEMUKAN_DI_DB: " + credentials.email);
         }
 
-        // Proper bcryptjs comparison for hashed passwords
-        const plainPassword = credentials.password.trim();
+        console.log("3. Hash prefix di DB:", user.passwordHash.substring(0, 15) + "...");
+        console.log("3. Role user:", user.role);
+
         let isValid = false;
         try {
-          isValid = await bcrypt.compare(plainPassword, user.passwordHash);
+          isValid = await bcrypt.compare(credentials.password, user.passwordHash);
+          console.log("4. Hasil bcrypt.compare():", isValid);
         } catch (bcryptErr) {
-          console.error("LOGIN ERROR: bcrypt.compare() melempar exception:", bcryptErr);
-          return null;
+          console.error("BCRYPT ERROR:", bcryptErr);
+          throw new Error("BCRYPT_GAGAL: " + String(bcryptErr));
         }
 
         if (!isValid) {
-          console.log(`LOGIN GAGAL: Password tidak cocok untuk email "${credentials.email}". Hash di DB: ${user.passwordHash.substring(0, 10)}...`);
-          return null;
+          throw new Error("PASSWORD_SALAH untuk email: " + credentials.email);
         }
 
-        console.log(`LOGIN SUKSES: Memasukkan user ${user.email} (role: ${user.role})`);
+        console.log("5. LOGIN SUKSES untuk role:", user.role);
         return {
           id: user.id,
           email: user.email,
@@ -80,4 +84,6 @@ export const authOptions: NextAuthOptions = {
     signIn: "/login", // Route to our custom login page
   },
   secret: process.env.NEXTAUTH_SECRET,
+  // trustHost adalah fitur NextAuth v5 — tidak tersedia di v4.
+  // Di v4, pastikan env var NEXTAUTH_URL disetel di Vercel: https://your-app.vercel.app
 };
