@@ -1,0 +1,367 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// --- ENUMS ---
+enum Role {
+  SUPER_ADMIN
+  MANAGER
+  CS
+  MARKETING
+  CREATOR
+  TUTOR
+  STUDENT
+}
+
+enum LeadStatus {
+  NEW
+  FOLLOW_UP
+  NEGOTIATION
+  CLOSED_WON
+  CLOSED_LOST
+}
+
+enum InvoiceStatus {
+  PENDING
+  WAITING_CONFIRMATION
+  DP_PAID
+  PAID
+  CANCELLED
+}
+
+enum TrackingType {
+  MANUAL // Di-update oleh user via UI (Contoh: Creator upload video)
+  AUTO_LEAD // Di-update otomatis oleh sistem saat ada lead baru
+  AUTO_REVENUE // Di-update otomatis saat invoice lunas
+  AUTO_ATTENDANCE // Di-update otomatis saat kelas selesai
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  EXCUSED // Izin
+  SICK
+}
+
+enum TransactionType {
+  INCOME
+  EXPENSE
+}
+
+enum TransactionCategory {
+  REGISTRATION_FEE
+  OPERATIONAL
+  SALARY
+  MARKETING
+  OTHER
+  DP
+  PELUNASAN
+}
+
+enum BranchLocation {
+  CENTER_POINT
+}
+
+enum ProgramCategory {
+  KIDDOS
+  ADULT_REGULAR
+  PRIVATE_ACADEMIC
+  PRIVATE_EXECUTIVE
+}
+
+enum ProgramFormat {
+  GROUP
+  PRIVATE
+}
+
+// ============================================================
+// --- MODELS (CENTER_POINT Percaya Diri Architecture) ---
+// ============================================================
+
+// TODO: Run 'npx prisma db push' after saving this schema
+
+// User: Admin, Tutor, atau Student
+model User {
+  id           String         @id @default(cuid())
+  name         String
+  email        String         @unique
+  passwordHash String
+  phoneNumber  String?
+  role         Role           @default(STUDENT)
+  branch       BranchLocation @default(CENTER_POINT)
+  status       String         @default("ACTIVE")
+  createdAt    DateTime       @default(now())
+
+  // Leave / Make-up Quota
+  leaveQuota Int @default(0)
+  leaveUsed  Int @default(0)
+
+  // Relasi
+  sessionsTaught      Session[]      @relation("SessionTutor") // Sesi yang diajar (untuk TUTOR)
+  schedulesTaught     ClassSchedule[] @relation("ScheduleTutor") // Jadwal mingguan tetap
+  attendances         Attendance[] // Kehadiran siswa (untuk STUDENT)
+  announcements       Announcement[] // Pengumuman (untuk ADMIN)
+  assignedSessions    Session[]      @relation("SessionAssignments")
+  enrollments         Enrollment[] // Data program (untuk STUDENT)
+  evaluationsReceived Evaluation[]   @relation("StudentEvaluations")
+  evaluationsGiven    Evaluation[]   @relation("TutorEvaluations")
+
+  // CRM & Dashboard Preferences
+  dashboardLayout Json?
+  leadsHandled    Lead[] @relation("UserLeads")
+
+  // KPI Engine
+  targets StaffTarget[]
+
+  // Financial
+  cashflows Cashflow[]
+}
+
+model ProgramClass {
+  id             String          @id @default(cuid())
+  name           String
+  durationMonths Int             @default(0) // Default 0 for Custom/Private
+  basePrice      Int
+  category       ProgramCategory @default(KIDDOS)
+  format         ProgramFormat   @default(GROUP)
+  activeModule   Int             @default(1)
+  branch         BranchLocation  @default(CENTER_POINT)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  schedules   ClassSchedule[]
+  Invoice     Invoice[]
+  evaluations Evaluation[]
+}
+
+model ClassSchedule {
+  id        String   @id @default(cuid())
+  title     String   @default("Regular Batch")
+  dayOfWeek String
+  startTime String
+  endTime   String
+  room      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  programId String
+  program   ProgramClass @relation(fields: [programId], references: [id], onDelete: Cascade)
+
+  tutorId   String?
+  tutor     User?        @relation("ScheduleTutor", fields: [tutorId], references: [id])
+
+  enrollments Enrollment[]
+  sessions    Session[]
+}
+
+model Enrollment {
+  id            String   @id @default(cuid())
+  startDate     DateTime
+  currentModule Int      @default(1)
+  frozenPrice   Float
+
+  studentId String
+  student   User   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  scheduleId String
+  schedule   ClassSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+}
+
+// Session: Entitas utama jadwal (seperti "kelas gym" yang dijadwalkan)
+// Setiap sesi adalah 1 pertemuan independen, tidak terikat ke "Kelas" tertentu.
+model Session {
+  id          String         @id @default(cuid())
+  title       String // cth: "Conversation - Room A", "Grammar Intensif - Room B"
+  date        DateTime // Tanggal sesi berlangsung
+  branch      BranchLocation @default(CENTER_POINT)
+  isCompleted Boolean        @default(false) // true = tutor sudah submit absen (trigger payroll)
+  notes       String?        @db.Text
+
+  scheduleId String
+  schedule   ClassSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+
+  // Tutor yang mengajar sesi ini
+  tutorId String
+  tutor   User   @relation("SessionTutor", fields: [tutorId], references: [id])
+
+  // Relasi
+  attendances      Attendance[] // Siswa yang hadir di sesi ini
+  assignedStudents User[]       @relation("SessionAssignments")
+}
+
+// Attendance: Tiket masuk siswa + Rapor evaluasi per sesi
+// Ini adalah "join table" antara Student dan Session,
+// sekaligus menyimpan hasil evaluasi granular dari tutor.
+model Attendance {
+  id        String           @id @default(cuid())
+  sessionId String
+  studentId String
+  status    AttendanceStatus @default(PRESENT)
+  isGuest   Boolean          @default(false) // Tandai jika ini siswa sit-in
+
+  confidenceScore Int?
+  tutorNotes      String? @db.Text
+
+  // Catatan reschedule (khusus Private Class)
+  rescheduleNotes String? @db.Text
+
+  // Relasi
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  student User    @relation(fields: [studentId], references: [id])
+
+  // 1 siswa tidak bisa punya 2 record attendance di sesi yang sama
+  @@unique([sessionId, studentId])
+}
+
+// Sistem Pengumuman (Admin broadcast ke Tutor/Student)
+model Announcement {
+  id         String   @id @default(cuid())
+  title      String
+  message    String   @db.Text
+  targetRole String   @default("ALL") // "ALL" | "STUDENT" | "TUTOR"
+  isActive   Boolean  @default(true)
+  expiresAt  DateTime
+  authorId   String
+  createdAt  DateTime @default(now())
+
+  author User @relation(fields: [authorId], references: [id])
+}
+
+model LivePerformance {
+  id        String   @id @default(cuid())
+  title     String // Contoh: "LP April 2026 - Pakuwon Mall"
+  eventDate DateTime // Fleksibel, misal 25 April 2026
+  notes     String?  @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Evaluation {
+  id          String   @id @default(cuid())
+  moduleName  String   // cth: "Modul 1: Menjadi Pembicara"
+  sessionType String   // cth: "Pertemuan 1", "Pertemuan 2", "Performance"
+  metrics     Json     // Menyimpan key-value skor, cth: { "Keberanian Tampil": "A", "Vokal": "B" }
+  notes       String?  @db.Text
+
+  studentId   String
+  student     User   @relation("StudentEvaluations", fields: [studentId], references: [id])
+
+  tutorId     String
+  tutor       User   @relation("TutorEvaluations", fields: [tutorId], references: [id])
+
+  programId   String
+  program     ProgramClass @relation(fields: [programId], references: [id])
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ============================================================
+// --- CRM & LEADS ---
+// ============================================================
+
+model Lead {
+  id       String         @id @default(cuid())
+  name     String
+  whatsapp String
+  status   LeadStatus     @default(NEW)
+  notes    String?        @db.Text
+  branch   BranchLocation @default(CENTER_POINT)
+
+  // Relasi ke CS/Admin yang menangani
+  assigneeId String?
+  assignee   User?   @relation("UserLeads", fields: [assigneeId], references: [id])
+
+  invoices Invoice[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ── KPI / WIG Universal Target Engine ────────────────────────────────────────
+model StaffTarget {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  period       String // Format: "MM-YYYY" (Contoh: "03-2026")
+  title        String // Nama KPI (Contoh: "Upload Tiktok", "Target Omzet")
+  targetValue  Float // Float untuk mendukung nominal uang besar
+  currentValue Float  @default(0)
+  unitName     String // Satuan (Contoh: "Video", "Rupiah", "Leads")
+
+  trackingType TrackingType @default(MANUAL)
+  // proofLink dipindah ke ProgressLog untuk audit trail per-hari
+
+  logs ProgressLog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ── Audit Trail: daily progress logs ─────────────────────────────────────────
+model ProgressLog {
+  id       String      @id @default(cuid())
+  targetId String
+  target   StaffTarget @relation(fields: [targetId], references: [id], onDelete: Cascade)
+
+  valueAdded Float // Angka penambahan hari ini
+  notes      String? @db.Text // Catatan pekerjaan hari ini
+  proofLink  String? @db.Text // Link bukti harian (GDrive/Tiktok)
+
+  createdAt DateTime @default(now())
+}
+
+// ── Invoice / Tagihan Siswa ───────────────────────────────────────────────────
+model Invoice {
+  id            String @id @default(cuid())
+  invoiceNumber String @unique // Format: INV-20260324-001
+
+  // Relasi ke Lead (prospek yang ditagih)
+  leadId String
+  lead   Lead   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  // Detail program & pembayaran
+  programId   String
+  program     ProgramClass   @relation(fields: [programId], references: [id])
+  amountDue   Float
+  totalAmount Int            @default(0)
+  paidAmount  Int            @default(0)
+  status      InvoiceStatus  @default(PENDING)
+  branch      BranchLocation @default(CENTER_POINT)
+
+  paymentMethod String? // "MANUAL_TRANSFER" | "CASH_ON_SITE" | "GATEWAY"
+  paymentProof  String? @db.Text // URL foto struk transfer
+
+  // Data form pendaftaran (alamat, asal sekolah, dll)
+  studentData Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  cashflows Cashflow[]
+}
+
+// ── Financial / Cashflow ──────────────────────────────────────────────────────
+model Cashflow {
+  id          String              @id @default(cuid())
+  type        TransactionType
+  category    TransactionCategory
+  amount      Int
+  description String
+  date        DateTime            @default(now())
+  branch      BranchLocation      @default(CENTER_POINT)
+
+  invoiceId String?
+  invoice   Invoice? @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+
+  recordedById String?
+  recordedBy   User?   @relation(fields: [recordedById], references: [id], onDelete: SetNull)
+}
