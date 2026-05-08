@@ -23,20 +23,20 @@ export async function addProgramModule(data: {
   try {
     await checkAccess();
 
-    // Tentukan auto-order (terakhir + 1)
+    // Auto-increment moduleNumber (terakhir + 1)
     const lastModule = await prisma.programModule.findFirst({
       where: { programId: data.programId },
-      orderBy: { order: "desc" },
-      select: { order: true },
+      orderBy: { moduleNumber: "desc" },
+      select: { moduleNumber: true },
     });
-    const nextOrder = (lastModule?.order ?? 0) + 1;
+    const nextNumber = (lastModule?.moduleNumber ?? 0) + 1;
 
-    await prisma.programModule.create({
+    await (prisma as any).programModule.create({
       data: {
         programId: data.programId,
         title: data.title.trim(),
         description: data.description?.trim() || null,
-        order: nextOrder,
+        moduleNumber: nextNumber,
       },
     });
 
@@ -50,17 +50,17 @@ export async function addProgramModule(data: {
 
 export async function updateProgramModule(
   moduleId: string,
-  data: { title: string; description?: string; order?: number }
+  data: { title: string; description?: string; moduleNumber?: number }
 ) {
   try {
     await checkAccess();
 
-    const mod = await prisma.programModule.update({
+    const mod = await (prisma as any).programModule.update({
       where: { id: moduleId },
       data: {
         title: data.title.trim(),
         description: data.description?.trim() || null,
-        ...(data.order !== undefined ? { order: data.order } : {}),
+        ...(data.moduleNumber !== undefined ? { moduleNumber: data.moduleNumber } : {}),
       },
     });
 
@@ -76,17 +76,17 @@ export async function deleteProgramModule(moduleId: string, programId: string) {
   try {
     await checkAccess();
 
-    await prisma.programModule.delete({ where: { id: moduleId } });
+    await (prisma as any).programModule.delete({ where: { id: moduleId } });
 
-    // Re-number modules setelah penghapusan
-    const remaining = await prisma.programModule.findMany({
+    // Re-number modules after deletion
+    const remaining = await (prisma as any).programModule.findMany({
       where: { programId },
-      orderBy: { order: "asc" },
+      orderBy: { moduleNumber: "asc" },
     });
     for (let i = 0; i < remaining.length; i++) {
-      await prisma.programModule.update({
+      await (prisma as any).programModule.update({
         where: { id: remaining[i].id },
-        data: { order: i + 1 },
+        data: { moduleNumber: i + 1 },
       });
     }
 
