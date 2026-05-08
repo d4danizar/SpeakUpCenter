@@ -21,16 +21,12 @@ export async function generateCertificateData(studentId: string) {
     where: { studentId: student.id },
     select: {
       startDate: true,
-      schedule: {
-        select: {
-          program: { select: { name: true } }
-        }
-      }
+      programClass: { select: { name: true } }
     },
     orderBy: { startDate: 'desc' }
   });
 
-  const activeProgramName = enrollment?.schedule?.program?.name || null;
+  const activeProgramName = enrollment?.programClass?.name || null;
   const startDate = enrollment?.startDate || null;
   // endDate tidak ada di schema baru — gunakan null (ada fitur sertifikat ke depan)
   const endDate: Date | null = null;

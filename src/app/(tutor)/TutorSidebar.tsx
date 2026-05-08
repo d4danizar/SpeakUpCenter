@@ -9,6 +9,7 @@ import { SignOutButton } from "../../components/auth/SignOutButton";
 const navItems = [
   { label: "Daily Schedule", href: "/tutor/dashboard", emoji: "📋" },
   { label: "Evaluations", href: "/tutor/evaluations", emoji: "📝" },
+  { label: "Nilai per Pertemuan", href: "/tutor/meeting-evaluations", emoji: "⭐" },
   { label: "Pengaturan", href: "/tutor/settings", emoji: "⚙️" },
 ];
 

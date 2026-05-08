@@ -10,7 +10,8 @@ import {
   Bell,
   Lock,
   Download,
-  Star
+  Star,
+  ClipboardList
 } from "lucide-react";
 import Image from "next/image";
 import { COMPANY_INFO } from "@/lib/constants/branding";
@@ -24,17 +25,17 @@ type ProfileContent = {
   leaveUsed: number;
   enrollments: {
     startDate: Date;
-    schedule: {
+    programClass: {
+      name: string;
+      durationMonths: number;
+    };
+    preferredSchedule: {
       title: string;
       dayOfWeek: string;
       startTime: string;
       endTime: string;
       room: string;
-      program: {
-        name: string;
-        durationMonths: number;
-      }
-    }
+    } | null;
   }[];
 };
 
@@ -52,7 +53,7 @@ export function StudentDashboardClient({
   const startDate = enrollment?.startDate ? new Date(enrollment.startDate) : new Date();
   
   // As per instruction, fallback duration is 2 if 0
-  const durationM = enrollment?.schedule?.program?.durationMonths || 2;
+  const durationM = enrollment?.programClass?.durationMonths || 2;
   const estimatedGraduation = addMonths(startDate, durationM);
   
   const today = new Date();
@@ -112,9 +113,24 @@ export function StudentDashboardClient({
       </section>
 
       {/* 2. BANNER PENGUMUMAN */}
-      <div className="mb-6">
+      <div className="mb-2">
         <AnnouncementBanner announcements={announcements} />
       </div>
+
+      {/* RAPOR SHORTCUT BANNER */}
+      <a
+        href="/student/rapor"
+        className="flex items-center gap-4 bg-gradient-to-r from-indigo-600 to-violet-600 text-white rounded-2xl p-4 shadow-md hover:shadow-lg hover:from-indigo-700 hover:to-violet-700 transition-all group"
+      >
+        <div className="w-10 h-10 shrink-0 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-sm">
+          <ClipboardList className="w-5 h-5 text-white" />
+        </div>
+        <div className="flex-1">
+          <p className="font-black text-sm">📋 Lihat Rapor Nilai Perkembangan</p>
+          <p className="text-indigo-200 text-xs mt-0.5">Nilai per aspek, deskripsi, dan saran Tutor untuk setiap pertemuan.</p>
+        </div>
+        <span className="text-indigo-200 group-hover:translate-x-1 transition-transform text-lg">→</span>
+      </a>
 
       {/* 3. GRID KARTU AKADEMIK */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -132,28 +148,33 @@ export function StudentDashboardClient({
             {enrollment ? (
               <div className="bg-slate-50 border border-slate-100 p-4 rounded-2xl">
                 <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest bg-indigo-100 px-2 py-0.5 rounded-full border border-indigo-200 mb-2 inline-block">
-                  {enrollment.schedule.program.name}
+                  {enrollment.programClass.name}
                 </span>
-                <h4 className="font-bold text-slate-800 text-base mb-3 leading-tight">{enrollment.schedule.title}</h4>
-                
-                <div className="flex flex-col gap-2.5">
-                  <div className="flex items-center gap-2.5 text-sm text-slate-600 font-medium">
-                    <CalendarDays className="w-4 h-4 text-slate-400" />
-                    <span>{enrollment.schedule.dayOfWeek}</span>
-                  </div>
-                  <div className="flex items-center gap-2.5 text-sm text-slate-600 font-medium">
-                    <Clock className="w-4 h-4 text-slate-400" />
-                    <span>{enrollment.schedule.startTime} - {enrollment.schedule.endTime}</span>
-                  </div>
-                  <div className="flex items-center gap-2.5 text-sm text-slate-600 font-medium">
-                    <MapPin className="w-4 h-4 text-slate-400" />
-                    <span>{enrollment.schedule.room}</span>
-                  </div>
-                </div>
+                {enrollment.preferredSchedule ? (
+                  <>
+                    <h4 className="font-bold text-slate-800 text-base mb-3 leading-tight">{enrollment.preferredSchedule.title}</h4>
+                    <div className="flex flex-col gap-2.5">
+                      <div className="flex items-center gap-2.5 text-sm text-slate-600 font-medium">
+                        <CalendarDays className="w-4 h-4 text-slate-400" />
+                        <span>{enrollment.preferredSchedule.dayOfWeek}</span>
+                      </div>
+                      <div className="flex items-center gap-2.5 text-sm text-slate-600 font-medium">
+                        <Clock className="w-4 h-4 text-slate-400" />
+                        <span>{enrollment.preferredSchedule.startTime} - {enrollment.preferredSchedule.endTime}</span>
+                      </div>
+                      <div className="flex items-center gap-2.5 text-sm text-slate-600 font-medium">
+                        <MapPin className="w-4 h-4 text-slate-400" />
+                        <span>{enrollment.preferredSchedule.room}</span>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <p className="text-sm text-slate-500 mt-2">Jadwal homebase belum ditetapkan oleh Admin.</p>
+                )}
               </div>
             ) : (
                <div className="flex-1 flex flex-col items-center justify-center text-center p-6 border border-dashed border-slate-200 rounded-2xl bg-slate-50/50">
-                 <p className="text-sm font-semibold text-slate-400">Belum tergabung dalam jadwal.</p>
+                 <p className="text-sm font-semibold text-slate-400">Belum tergabung dalam program.</p>
                </div>
             )}
           </div>

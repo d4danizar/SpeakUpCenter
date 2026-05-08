@@ -12,8 +12,10 @@ import {
   Award,
   X,
   Loader2,
+  Star,
 } from "lucide-react";
 import { submitScheduleAttendance } from "../actions";
+import ClassEvaluationModal from "./ClassEvaluationModal";
 import { AnnouncementBanner } from "@/components/ui/AnnouncementBanner";
 
 // --- Types ---
@@ -35,8 +37,12 @@ export type SessionTask = {
   endTime: string;   // e.g. "15:30"
   isCompleted: boolean;
   className: string;
+  programId: string;
   programType: string;
+  programCategory?: string;
+  sessionId: string | null;
   students: EligibleStudent[];
+  globalPoolStudents?: EligibleStudent[];
 };
 
 export type QuickStat = {
@@ -73,7 +79,7 @@ export function TutorDashboardClient({
 }) {
   const [selectedTask, setSelectedTask] = useState<SessionTask | null>(null);
   const [isPending, startTransition] = useTransition();
-  const [detailSessionId, setDetailSessionId] = useState<string | null>(null);
+  const [evaluatingTask, setEvaluatingTask] = useState<SessionTask | null>(null);
 
   // Per-student attendance state
   const [studentEvals, setStudentEvals] = useState<
@@ -83,8 +89,24 @@ export function TutorDashboardClient({
   const [rescheduleNotes, setRescheduleNotes] = useState("");
   
   const [modalStudents, setModalStudents] = useState<EligibleStudent[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
 
-
+  const handleAddStudent = (student: EligibleStudent) => {
+    // Only add if not already in modalStudents
+    if (!modalStudents.some(s => s.id === student.id)) {
+      setModalStudents(prev => [student, ...prev]);
+      setStudentEvals(prev => ({
+        ...prev,
+        [student.id]: {
+          status: "PRESENT",
+          pronunciation: student.existingPronunciation ?? 5,
+          fluency: student.existingFluency ?? 5,
+          vocabulary: student.existingVocabulary ?? 5,
+        }
+      }));
+    }
+    setSearchQuery("");
+  };
 
   const handleOpenModal = (task: SessionTask) => {
     setSelectedTask(task);
@@ -111,6 +133,7 @@ export function TutorDashboardClient({
   const handleCloseModal = () => {
     setSelectedTask(null);
     setModalStudents([]);
+    setSearchQuery("");
   };
 
   const handleRemoveStudent = (studentId: string) => {
@@ -265,6 +288,12 @@ export function TutorDashboardClient({
                           <Users className="w-4 h-4 text-slate-400" />
                           {eligibleCount} Eligible Students
                         </div>
+                        {isCompleted && (
+                          <div className="flex items-center gap-1.5 text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md">
+                            <Star className="w-3.5 h-3.5" />
+                            {task.students.filter(s => s.existingStatus === "PRESENT").length} Murid Hadir - Menunggu Evaluasi
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -272,10 +301,14 @@ export function TutorDashboardClient({
                   {/* Action Column */}
                   <div className="flex-shrink-0 w-full md:w-auto mt-2 md:mt-0">
                     {isCompleted ? (
-                      <div className="inline-flex w-full md:w-auto items-center justify-center gap-2 text-sm font-bold text-emerald-700 bg-emerald-50 px-5 py-3 rounded-xl border border-emerald-100 cursor-default shadow-sm transition">
-                        <CheckCircle className="w-5 h-5" />
-                        Presensi Selesai
-                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setEvaluatingTask(task)}
+                        className="w-full md:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 px-5 py-3 text-sm font-semibold text-white shadow-sm transition-all duration-200"
+                      >
+                        📝 Evaluasi Kelas
+                        <ChevronRight className="w-4 h-4" />
+                      </button>
                     ) : (
                       <button
                         type="button"
@@ -320,7 +353,55 @@ export function TutorDashboardClient({
             {/* Modal Body (Scrollable) */}
             <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-4">
 
-              {/* No Search Bar */}
+              {/* Search Bar for Adding Students */}
+              <div className="flex flex-col gap-2">
+                <div className="relative">
+                  <input
+                    type="text"
+                    placeholder="🔍 Cari nama murid untuk ditambahkan..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full border border-slate-300 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all bg-white shadow-sm placeholder-slate-400"
+                  />
+                  {searchQuery && (
+                    <button
+                      onClick={() => setSearchQuery("")}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Dropdown Search Results */}
+                {searchQuery.trim().length > 0 && selectedTask?.globalPoolStudents && (
+                  <div className="border border-slate-200 rounded-xl bg-white shadow-md max-h-48 overflow-y-auto mt-1 z-10 relative divide-y divide-slate-100">
+                    {selectedTask.globalPoolStudents
+                      .filter(s => 
+                        s.name.toLowerCase().includes(searchQuery.toLowerCase()) && 
+                        !modalStudents.some(ms => ms.id === s.id)
+                      )
+                      .map(student => (
+                        <button
+                          key={student.id}
+                          onClick={() => handleAddStudent(student)}
+                          className="w-full text-left px-4 py-3 text-sm hover:bg-indigo-50 focus:bg-indigo-50 transition-colors flex items-center justify-between group"
+                        >
+                          <span className="font-semibold text-slate-700 group-hover:text-indigo-700">{student.name}</span>
+                          <span className="text-xs text-indigo-500 opacity-0 group-hover:opacity-100 transition-opacity font-medium">+ Tambahkan</span>
+                        </button>
+                      ))}
+                    {selectedTask.globalPoolStudents.filter(s => 
+                        s.name.toLowerCase().includes(searchQuery.toLowerCase()) && 
+                        !modalStudents.some(ms => ms.id === s.id)
+                      ).length === 0 && (
+                        <div className="px-4 py-3 text-sm text-slate-500 italic text-center">
+                          Tidak ada murid yang ditemukan atau sudah ditambahkan.
+                        </div>
+                    )}
+                  </div>
+                )}
+              </div>
 
               {/* Student Count Info */}
               <div className="flex items-center justify-between border-b border-slate-100 pb-2">
@@ -482,6 +563,14 @@ export function TutorDashboardClient({
 
           </div>
         </div>
+      )}
+
+      {/* 5. Class Evaluation Modal */}
+      {evaluatingTask && (
+        <ClassEvaluationModal 
+          task={evaluatingTask}
+          onClose={() => setEvaluatingTask(null)}
+        />
       )}
 
     </div>

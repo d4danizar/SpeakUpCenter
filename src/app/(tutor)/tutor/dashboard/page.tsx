@@ -31,17 +31,7 @@ export default async function TutorDashboardPage() {
     orderBy: { startTime: "asc" },
     include: {
       program: true,
-      enrollments: {
-        where: {
-          student: { status: "ACTIVE" }
-        },
-        include: {
-          student: {
-            select: { id: true, name: true }
-          }
-        }
-      },
-      // Ambil session jika tutor SUDAH melakukan presensi hari ini untuk jadwal ini
+      // Ambil session hari ini (untuk cek apakah presensi sudah dilakukan)
       sessions: {
         where: {
           date: { gte: todayStart, lte: todayEnd }
@@ -53,42 +43,62 @@ export default async function TutorDashboardPage() {
     }
   });
 
-  const todaySessions: SessionTask[] = schedules.map(sch => {
-    // Check if session exist for today
-    const existingSession = sch.sessions[0]; // If exists, they already took attendance
+  const todaySessions: SessionTask[] = await Promise.all(schedules.map(async sch => {
+    const existingSession = sch.sessions[0];
 
     const timeSlot = `${sch.startTime} - ${sch.endTime}`;
     const programType = sch.program.name;
+    const programId = sch.program.id;
+    const programCategory = sch.program.category || undefined;
+    const sessionId = existingSession ? existingSession.id : null;
 
-    // Convert enrollments to EligibleStudents
-    const mergedStudents: EligibleStudent[] = sch.enrollments.map(enrol => {
-      // Find historical attendance in the existing session
-      const attendance = existingSession?.attendances?.find(a => a.studentId === enrol.studentId);
-      
-      return {
-        id: enrol.student.id,
-        name: enrol.student.name,
-        activeProgram: programType,
-        existingStatus: attendance ? attendance.status : null,
-        existingPronunciation: attendance?.confidenceScore ?? null,
-        existingFluency: null,
-        existingVocabulary: null,
-        existingNotes: attendance?.tutorNotes ?? null,
-      };
+    // Ambil Global Pool dari ProgramClass (bukan dari ClassSchedule.enrollments)
+    const globalEnrollments = await prisma.enrollment.findMany({
+      where: {
+        programClassId: sch.programId,
+        student: { status: "ACTIVE" }
+      },
+      include: {
+        student: { select: { id: true, name: true } }
+      }
     });
 
+    const uniqueStudentsMap = new Map<string, EligibleStudent>();
+    for (const en of globalEnrollments) {
+      if (!uniqueStudentsMap.has(en.student.id)) {
+        // Cek apakah sudah ada record absensi di sesi hari ini
+        const attendance = existingSession?.attendances?.find(a => a.studentId === en.student.id);
+        uniqueStudentsMap.set(en.student.id, {
+          id: en.student.id,
+          name: en.student.name,
+          activeProgram: programType,
+          existingStatus: attendance ? attendance.status : null, // null = UNMARKED by default
+          existingPronunciation: attendance?.confidenceScore ?? null,
+          existingFluency: null,
+          existingVocabulary: null,
+          existingNotes: attendance?.tutorNotes ?? null,
+        });
+      }
+    }
+
+    const globalPoolStudents = Array.from(uniqueStudentsMap.values())
+      .sort((a, b) => a.name.localeCompare(b.name));
+
     return {
-      id: sch.id, // we pass scheduleId here, instead of sessionId
+      id: sch.id,
       timeSlot,
       startTime: sch.startTime,
       endTime: sch.endTime,
-      isCompleted: !!existingSession, // Completed if session exists
+      isCompleted: !!existingSession,
       className: sch.title,
+      programId,
       programType,
-      students: mergedStudents,
-      globalPoolStudents: [], // We don't need a global pool anymore if roster is strictly enrollment!
+      programCategory,
+      sessionId,
+      students: globalPoolStudents,      // backward compat alias
+      globalPoolStudents,
     };
-  });
+  }));
 
   // Calculate quick stats
   const totalToday = todaySessions.length;

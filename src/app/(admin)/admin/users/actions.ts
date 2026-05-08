@@ -49,9 +49,18 @@ export async function editUser(formData: FormData) {
     const role = formData.get("role") as Role;
     const programId = formData.get("programId") as string;
 
+    const startDateRaw = formData.get("startDate") as string;
+    const endDateRaw = formData.get("endDate") as string;
+    const durationOption = formData.get("durationOption") as string;
+    const batchSchedule = formData.get("batchSchedule") as string;
+    const programBatch = formData.get("programBatch") as string;
+
     if (!id || !name || !email || !role) {
       return { error: "ID, Name, email, and role are required." };
     }
+
+    const startDate = startDateRaw ? new Date(startDateRaw) : null;
+    const endDate = endDateRaw ? new Date(endDateRaw) : null;
 
     await prisma.user.update({
       where: { id },
@@ -60,34 +69,42 @@ export async function editUser(formData: FormData) {
         email,
         phoneNumber: phoneNumber || null,
         role,
+        startDate: role === 'STUDENT' ? startDate : undefined,
+        endDate: role === 'STUDENT' ? endDate : undefined,
       },
     });
 
     if (programId && role === 'STUDENT') {
-      const schedule = await prisma.classSchedule.findFirst({
-        where: { programId }
+      // Ambil preferredSchedule (opsional, untuk homebase dashboard)
+      const firstSchedule = await prisma.classSchedule.findFirst({
+        where: { programId },
+        select: { id: true },
+        orderBy: { createdAt: "asc" },
       });
-      
-      if (schedule) {
-        const existing = await prisma.enrollment.findFirst({
-          where: { studentId: id }
+
+      const existing = await prisma.enrollment.findFirst({
+        where: { studentId: id },
+        select: { id: true },
+      });
+
+      if (existing) {
+        await prisma.enrollment.update({
+          where: { id: existing.id },
+          data: {
+            programClassId: programId,
+            preferredScheduleId: firstSchedule?.id ?? null,
+          }
         });
-        
-        if (existing) {
-          await prisma.enrollment.update({
-            where: { id: existing.id },
-            data: { scheduleId: schedule.id }
-          });
-        } else {
-          await prisma.enrollment.create({
-            data: {
-              studentId: id,
-              scheduleId: schedule.id,
-              startDate: new Date(),
-              frozenPrice: 0 // Mock baseline for now
-            }
-          });
-        }
+      } else {
+        await prisma.enrollment.create({
+          data: {
+            studentId: id,
+            programClassId: programId,
+            preferredScheduleId: firstSchedule?.id ?? undefined,
+            startDate: startDate ?? new Date(),
+            frozenPrice: 0,
+          }
+        });
       }
     }
 

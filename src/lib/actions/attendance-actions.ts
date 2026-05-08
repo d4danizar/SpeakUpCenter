@@ -18,8 +18,12 @@ export async function runDailyAutoAbsence() {
       include: {
         schedule: {
           include: {
-            enrollments: {
-              select: { studentId: true }
+            program: {
+              include: {
+                enrollments: {
+                  select: { studentId: true }
+                }
+              }
             }
           }
         }
@@ -34,8 +38,8 @@ export async function runDailyAutoAbsence() {
 
     // 3. Loop setiap sesi hari ini
     for (const session of todaysSessions) {
-      // 4. Ambil daftar siswa yang terdaftar di jadwal (ClassSchedule) sesi ini via Enrollment
-      const enrolledStudentIds = session.schedule.enrollments.map(e => e.studentId);
+      // 4. Ambil daftar murid dari Global Pool ProgramClass
+      const enrolledStudentIds = session.schedule.program.enrollments.map(e => e.studentId);
 
       // 5. Loop setiap murid yang terdaftar
       for (const studentId of enrolledStudentIds) {

@@ -13,6 +13,11 @@ export default async function AdminUsersPage() {
   const rawUsers = await prisma.user.findMany({
     where: { ...branchFilter },
     orderBy: { createdAt: "desc" },
+    include: {
+      enrollments: {
+        include: { programClass: true }
+      }
+    }
   });
 
   const users = rawUsers.map(user => ({
@@ -24,7 +29,7 @@ export default async function AdminUsersPage() {
     branch: user.branch,
     status: user.status,
     createdAt: user.createdAt.toISOString(),
-    activeProgram: (user as any).activeProgram || "-",
+    activeProgram: user.enrollments?.[0]?.programClass?.name || (user as any).activeProgram || "-",
     programBatch: (user as any).programBatch || null,
     startDate: (user as any).startDate ? new Date((user as any).startDate).toISOString() : null,
     endDate: (user as any).endDate ? new Date((user as any).endDate).toISOString() : null,

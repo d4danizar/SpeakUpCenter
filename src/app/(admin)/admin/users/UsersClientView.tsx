@@ -6,6 +6,7 @@ import {
   Users, 
   Search, 
   Download, 
+  Upload,
   Plus, 
   ShieldCheck, 
   GraduationCap, 
@@ -456,6 +457,13 @@ export function UsersClientView({
               </>
             )}
           </button>
+          <a
+            href="/admin/students/import"
+            className="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl hover:bg-emerald-100 transition-all shadow-sm"
+          >
+            <Upload className="w-4 h-4" />
+            Import Murid
+          </a>
           <button 
             onClick={() => setIsAddModalOpen(true)}
             className="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 transition-all shadow-sm"

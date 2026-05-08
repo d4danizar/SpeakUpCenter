@@ -288,11 +288,11 @@ export async function approvePayment(invoiceId: string) {
       else if (finalDurationOption === "6_MONTHS") calculatedLeaveQuota = 12; // EFK / EFT
       else if (finalActiveProgram === "Regular") calculatedLeaveQuota = 3; // Fallback untuk Regular
 
-      // F. Tautan Relasi Program (Schedule & Enrollment)
-      let finalScheduleId = dataPayload.scheduleId;
-      if (finalScheduleId === "PRIVATE_MANUAL") {
-        finalScheduleId = null; // Tidak ditautkan saat ini secara sistem (ditangani tutor private)
-      }
+      // F. Tautan Relasi Program (programClassId & preferredScheduleId)
+      const finalProgramClassId = (invoice as any).programClassId || (invoice as any).program?.id || null;
+      let preferredScheduleId: string | null = dataPayload.scheduleId && dataPayload.scheduleId !== "PRIVATE_MANUAL"
+        ? dataPayload.scheduleId
+        : null;
 
       console.log("=== TRANSAKSI STEP 4 MULA (UPSERT USER) ===");
       // 3. UPSERT USER DATABASE
@@ -314,18 +314,18 @@ export async function approvePayment(invoiceId: string) {
       console.log("=== TRANSAKSI STEP 4 LULUS ===");
 
       console.log("=== TRANSAKSI STEP 5 MULA (ENROLLMENT) ===");
-      // 4. Enroll Student to Schedule
-      if (finalScheduleId) {
-        // Cek jika siswa belum enroll jadwal ini (Mencegah ganda)
+      // 4. Enroll Student to ProgramClass (Global Pool)
+      if (finalProgramClassId) {
         const checkEnroll = await tx.enrollment.findFirst({
-          where: { studentId: savedUser.id, scheduleId: finalScheduleId }
+          where: { studentId: savedUser.id, programClassId: finalProgramClassId }
         });
-        
+
         if (!checkEnroll) {
           await tx.enrollment.create({
             data: {
               studentId: savedUser.id,
-              scheduleId: finalScheduleId,
+              programClassId: finalProgramClassId,
+              preferredScheduleId: preferredScheduleId ?? undefined,
               startDate: calculatedStartDate,
               frozenPrice: (invoice as any).totalAmount || 0,
             }

@@ -184,10 +184,13 @@ export async function getProgramClasses() {
 
     const programs = await prisma.programClass.findMany({
       include: {
+        _count: {
+          select: { enrollments: true }   // ← jumlah murid Global Pool per kelas
+        },
         schedules: {
           include: {
             _count: {
-              select: { enrollments: true }
+              select: { preferredByEnrollments: true }
             }
           }
         }
@@ -271,7 +274,7 @@ export async function deleteClassSchedule(scheduleId: string) {
       where: { id: scheduleId },
       include: {
         _count: {
-          select: { enrollments: true }
+          select: { preferredByEnrollments: true }
         }
       }
     });
@@ -280,9 +283,8 @@ export async function deleteClassSchedule(scheduleId: string) {
       return { success: false, error: "Jadwal tidak ditemukan." };
     }
 
-    if (schedule._count.enrollments > 0) {
-      return { success: false, error: "Tidak dapat menghapus jadwal yang sudah memiliki murid. Pindahkan murid terlebih dahulu." };
-    }
+    // Note: Jadwal bisa dihapus meski ada murid yang menjadikannya homebase
+    // (preferredScheduleId akan menjadi null secara otomatis karena onDelete: SetNull)
 
     await prisma.classSchedule.delete({
       where: { id: scheduleId },

@@ -20,9 +20,7 @@ export async function getStudentsByProgram(programId: string) {
   // Find all enrollments belonging to the given program based on the schedule relation
   const enrollments = await prisma.enrollment.findMany({
     where: {
-      schedule: {
-        programId: programId,
-      },
+      programClassId: programId,
       student: {
         role: "STUDENT",
         status: "ACTIVE"

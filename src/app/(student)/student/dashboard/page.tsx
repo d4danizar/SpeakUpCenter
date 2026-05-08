@@ -6,6 +6,7 @@ import { StudentDashboardClient } from "./StudentDashboardClient";
 import Image from "next/image";
 import { COMPANY_INFO } from "@/lib/constants/branding";
 import { prisma } from "../../../../lib/prisma";
+import { BookOpen, Sparkles } from "lucide-react";
 
 export default async function StudentDashboardPage() {
   const sessionUser = await getServerSession(authOptions);
@@ -30,6 +31,20 @@ export default async function StudentDashboardPage() {
       select: { id: true, title: true, message: true }
     }),
   ]);
+
+  // Fetch modul aktif dari program murid ini (via Enrollment → ProgramClass → ProgramModule)
+  const studentEnrollment = await prisma.enrollment.findFirst({
+    where: { studentId },
+    select: { programClassId: true }
+  });
+
+  const activeModule = studentEnrollment ? await (prisma as any).programModule.findFirst({
+    where: {
+      isActive: true,
+      programId: studentEnrollment.programClassId,
+    },
+    select: { moduleNumber: true, title: true, description: true }
+  }) : null;
 
   if (!profile) {
     return (
@@ -66,6 +81,44 @@ export default async function StudentDashboardPage() {
             </p>
           </div>
         </div>
+
+        {/* Card: Modul Berjalan Saat Ini */}
+        {activeModule ? (
+          <div className="relative overflow-hidden bg-gradient-to-br from-indigo-600 via-indigo-700 to-violet-700 rounded-2xl p-5 shadow-lg text-white">
+            {/* Background decoration */}
+            <div className="absolute -top-6 -right-6 w-32 h-32 bg-white/5 rounded-full" />
+            <div className="absolute -bottom-8 -right-2 w-24 h-24 bg-white/5 rounded-full" />
+
+            <div className="relative flex items-start gap-4">
+              <div className="w-12 h-12 shrink-0 bg-white/15 rounded-xl flex items-center justify-center backdrop-blur-sm">
+                <BookOpen className="w-6 h-6 text-white" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-indigo-200 text-xs font-bold uppercase tracking-widest mb-1 flex items-center gap-1.5">
+                  <Sparkles className="w-3 h-3" /> Modul Berjalan Saat Ini
+                </p>
+                <p className="text-xl font-black leading-tight">
+                  Modul {activeModule.moduleNumber} — {activeModule.title}
+                </p>
+                {activeModule.description && (
+                  <p className="text-indigo-200 text-sm mt-1.5 leading-relaxed line-clamp-2">
+                    {activeModule.description}
+                  </p>
+                )}
+              </div>
+              <div className="shrink-0 w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center border border-white/20">
+                <span className="text-xl font-black">{activeModule.moduleNumber}</span>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center gap-3 bg-slate-100 border border-slate-200 rounded-2xl px-5 py-4">
+            <BookOpen className="w-5 h-5 text-slate-400 shrink-0" />
+            <p className="text-sm font-semibold text-slate-500">
+              Belum ada modul aktif untuk periode ini.
+            </p>
+          </div>
+        )}
 
         {/* Client Component */}
         <StudentDashboardClient 

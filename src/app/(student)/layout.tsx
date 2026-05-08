@@ -1,5 +1,5 @@
 import { SignOutButton } from "../../components/auth/SignOutButton";
-import { LayoutDashboard, CalendarDays, Star } from "lucide-react";
+import { LayoutDashboard, CalendarDays, Star, ClipboardList } from "lucide-react";
 import Image from "next/image";
 import { COMPANY_INFO } from "@/lib/constants/branding";
 
@@ -34,6 +34,7 @@ export default function StudentLayout({
           <div className="hidden md:flex items-center gap-6 text-sm font-medium text-slate-600">
             <a href="/student/dashboard" className="hover:text-slate-900 transition-colors">Dashboard</a>
             <a href="/student/schedules" className="hover:text-slate-900 transition-colors">My Schedule</a>
+            <a href="/student/rapor" className="hover:text-slate-900 transition-colors font-bold text-indigo-600">Rapor Nilai</a>
             <a href="/student/evaluations" className="hover:text-slate-900 transition-colors">Evaluations</a>
             <a href="/student/settings" className="hover:text-slate-900 transition-colors">Settings</a>
             <div className="pl-4 border-l border-slate-200">
@@ -74,6 +75,10 @@ export default function StudentLayout({
         <a href="/student/evaluations" className="flex flex-col items-center gap-1 text-slate-500 hover:text-slate-900 transition-colors">
           <Star className="w-5 h-5" />
           <span className="text-[10px] font-semibold text-slate-500 hover:text-slate-900 transition-colors">Scores</span>
+        </a>
+        <a href="/student/rapor" className="flex flex-col items-center gap-1 text-indigo-600 hover:text-indigo-700 transition-colors">
+          <ClipboardList className="w-5 h-5" />
+          <span className="text-[10px] font-bold">Rapor</span>
         </a>
         <a href="/student/settings" className="flex flex-col items-center gap-1 text-slate-500 hover:text-slate-900 transition-colors">
           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>

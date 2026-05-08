@@ -13,11 +13,8 @@ export async function getStudentProfile(studentId: string) {
       leaveUsed: true,
       enrollments: {
         include: {
-          schedule: {
-            include: {
-              program: true,
-            }
-          }
+          programClass: true,
+          preferredSchedule: true,
         }
       }
     },

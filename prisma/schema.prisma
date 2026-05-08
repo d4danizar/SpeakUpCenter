@@ -97,6 +97,13 @@ model User {
   branch       BranchLocation @default(CENTER_POINT)
   status       String         @default("ACTIVE")
   createdAt    DateTime       @default(now())
+  sessionExtensions Int       @default(0) // Ekstensi kuota khusus Adult Speak (BUKAN Kiddos)
+
+  // Data tambahan murid (dari import Excel)
+  startDate      DateTime? // Tanggal mulai bergabung
+  endDate        DateTime? // Tanggal selesai / keluar
+  scheduleChoice String?   // Pilihan jadwal dari form pendaftaran
+  studentStatus  String?   @default("Aktif") // Status khusus murid: Aktif, Alumni, Cuti, dll
 
   // Leave / Make-up Quota
   leaveQuota Int @default(0)
@@ -111,6 +118,8 @@ model User {
   enrollments         Enrollment[] // Data program (untuk STUDENT)
   evaluationsReceived Evaluation[]   @relation("StudentEvaluations")
   evaluationsGiven    Evaluation[]   @relation("TutorEvaluations")
+  meetingEvalsReceived MeetingEvaluation[] @relation("MeetingEvalStudent")
+  meetingEvalsGiven    MeetingEvaluation[] @relation("MeetingEvalTutor")
 
   // CRM & Dashboard Preferences
   dashboardLayout Json?
@@ -136,8 +145,46 @@ model ProgramClass {
   updatedAt      DateTime        @updatedAt
 
   schedules   ClassSchedule[]
+  enrollments Enrollment[]    // Global Pool murid di program ini
   Invoice     Invoice[]
   evaluations Evaluation[]
+  modules     ProgramModule[] // Kurikulum / daftar modul
+}
+
+// ── Rotational Entry System: Kurikulum Kiddos ────────────────────────────────
+// Hierarki: ProgramClass → ProgramModule (6 buah) → ModuleMeeting (4 buah)
+model ProgramModule {
+  id           String        @id @default(cuid())
+  moduleNumber Int           // 1 sampai 6
+  title        String        // cth: "Menjadi Pembicara", "Storytelling"
+  description  String?       @db.Text
+  isActive     Boolean       @default(false) // Hanya 1 per ProgramClass yang boleh true
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  programId String
+  program   ProgramClass  @relation(fields: [programId], references: [id], onDelete: Cascade)
+
+  meetings  ModuleMeeting[]
+}
+
+model ModuleMeeting {
+  id            String        @id @default(cuid())
+  meetingNumber Int           // 1 sampai 4
+  material      String        @db.Text // Deskripsi materi di pertemuan ini
+  isPerformance Boolean       @default(false) // true jika ini "Perform di Mall"
+  
+  // JSON yang berisi list aspek beserta deskripsi & saran untuk nilai A-E.
+  // Contoh format: [{ aspectName: "Keberanian", A: {desc: "...", saran: "..."} }]
+  rubricData    Json?
+
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  moduleId String
+  module   ProgramModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  meetingEvaluations MeetingEvaluation[] // Penilaian per murid di pertemuan ini
 }
 
 model ClassSchedule {
@@ -156,7 +203,7 @@ model ClassSchedule {
   tutorId   String?
   tutor     User?        @relation("ScheduleTutor", fields: [tutorId], references: [id])
 
-  enrollments Enrollment[]
+  preferredByEnrollments Enrollment[] @relation("PreferredSchedule")  // Homebase opsional murid
   sessions    Session[]
 }
 
@@ -169,8 +216,13 @@ model Enrollment {
   studentId String
   student   User   @relation(fields: [studentId], references: [id], onDelete: Cascade)
 
-  scheduleId String
-  schedule   ClassSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  // Relasi utama: Murid terdaftar di ProgramClass (Global Pool)
+  programClassId String
+  programClass   ProgramClass @relation(fields: [programClassId], references: [id], onDelete: Cascade)
+
+  // Opsional: Jadwal "homebase" untuk tampilan dashboard murid
+  preferredScheduleId String?
+  preferredSchedule   ClassSchedule? @relation("PreferredSchedule", fields: [preferredScheduleId], references: [id], onDelete: SetNull)
 }
 
 // Session: Entitas utama jadwal (seperti "kelas gym" yang dijadwalkan)
@@ -364,4 +416,43 @@ model Cashflow {
 
   recordedById String?
   recordedBy   User?   @relation(fields: [recordedById], references: [id], onDelete: SetNull)
+}
+
+// ── Evaluasi Per Pertemuan (Kiddos & Adult Speak) ────────────────────────────
+// Satu record per murid per pertemuan. Struktur bersifat fleksibel:
+// - Kiddos: predicate (global A-E) + description + suggestion
+// - Adult Speak: aspectScores (JSON map aspek→predikat) + tutorNote
+model MeetingEvaluation {
+  id           String   @id @default(cuid())
+  attendance   String   @default("PRESENT") // "PRESENT" | "ABSENT" | "SICK" | "EXCUSED"
+  predicate    String?  // Predikat global (Kiddos) — null jika Adult atau tidak hadir
+  description  String?  @db.Text // Kiddos: catatan positif
+  suggestion   String?  @db.Text // Kiddos: saran perbaikan
+  aspectScores Json?    // Adult Speak: { "Confidence": "A", "Eye Contact": "B", ... }
+  tutorNote    String?  @db.Text // Adult Speak: catatan pelatih umum per pertemuan
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  studentId String
+  student   User   @relation("MeetingEvalStudent", fields: [studentId], references: [id], onDelete: Cascade)
+
+  tutorId String
+  tutor   User   @relation("MeetingEvalTutor", fields: [tutorId], references: [id])
+
+  meetingId String
+  meeting   ModuleMeeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  // Satu murid hanya boleh punya 1 penilaian per pertemuan (upsert-safe)
+  @@unique([studentId, meetingId])
+}
+
+// ── Kalender Libur Nasional ───────────────────────────────────────────────────
+// Admin mengisi libur nasional agar sistem bisa menandai sesi yang dibatalkan.
+model GlobalHoliday {
+  id        String   @id @default(cuid())
+  name      String   // cth: "Libur Lebaran", "Hari Kemerdekaan"
+  startDate DateTime
+  endDate   DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
