@@ -16,9 +16,6 @@ export async function submitScheduleAttendance(formData: FormData) {
     const scheduleId = formData.get("scheduleId") as string;
     const studentIds = formData.getAll("studentId") as string[];
     const statuses = formData.getAll("status") as string[];
-    const pronunciations = formData.getAll("pronunciation") as string[];
-    const fluencies = formData.getAll("fluency") as string[];
-    const vocabularies = formData.getAll("vocabulary") as string[];
     const tutorNotes = formData.get("tutorNotes") as string;
     const rescheduleNotes = formData.get("rescheduleNotes") as string;
 
@@ -76,7 +73,6 @@ export async function submitScheduleAttendance(formData: FormData) {
       for (let i = 0; i < studentIds.length; i++) {
         const studentId = studentIds[i];
         let status = (statuses[i] || "PRESENT") as "PRESENT" | "ABSENT" | "EXCUSED" | "SICK";
-        const confidenceScore = parseInt(pronunciations[i]) || null;
 
         // 1. Check existing attendance in the active session
         const existing = await tx.attendance.findFirst({
@@ -88,7 +84,6 @@ export async function submitScheduleAttendance(formData: FormData) {
             where: { id: existing.id },
             data: {
               status,
-              confidenceScore,
               tutorNotes: tutorNotes || null,
               rescheduleNotes: rescheduleNotes || null,
             },
@@ -99,7 +94,6 @@ export async function submitScheduleAttendance(formData: FormData) {
               sessionId: activeSessionId,
               studentId,
               status,
-              confidenceScore,
               tutorNotes: tutorNotes || null,
               rescheduleNotes: rescheduleNotes || null,
             },

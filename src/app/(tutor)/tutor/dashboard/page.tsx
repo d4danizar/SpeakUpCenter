@@ -73,10 +73,6 @@ export default async function TutorDashboardPage() {
           name: en.student.name,
           activeProgram: programType,
           existingStatus: attendance ? attendance.status : null, // null = UNMARKED by default
-          existingPronunciation: attendance?.confidenceScore ?? null,
-          existingFluency: null,
-          existingVocabulary: null,
-          existingNotes: attendance?.tutorNotes ?? null,
         });
       }
     }

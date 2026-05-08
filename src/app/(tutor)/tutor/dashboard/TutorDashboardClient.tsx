@@ -24,10 +24,6 @@ export type EligibleStudent = {
   name: string;
   activeProgram: string | null;
   existingStatus: string | null;   // null = no attendance yet
-  existingPronunciation: number | null;
-  existingFluency: number | null;
-  existingVocabulary: number | null;
-  existingNotes: string | null;
 };
 
 export type SessionTask = {
@@ -83,7 +79,7 @@ export function TutorDashboardClient({
 
   // Per-student attendance state
   const [studentEvals, setStudentEvals] = useState<
-    Record<string, { status: string; pronunciation: number; fluency: number; vocabulary: number }>
+    Record<string, { status: string }>
   >({});
   const [tutorNotes, setTutorNotes] = useState("");
   const [rescheduleNotes, setRescheduleNotes] = useState("");
@@ -98,10 +94,7 @@ export function TutorDashboardClient({
       setStudentEvals(prev => ({
         ...prev,
         [student.id]: {
-          status: "PRESENT",
-          pronunciation: student.existingPronunciation ?? 5,
-          fluency: student.existingFluency ?? 5,
-          vocabulary: student.existingVocabulary ?? 5,
+          status: "",
         }
       }));
     }
@@ -117,15 +110,17 @@ export function TutorDashboardClient({
     const initialStudentsToGrade = task.students;
     setModalStudents(initialStudentsToGrade);
 
-    // Initialize evals from existing attendance data or defaults
-    const initialEvals: typeof studentEvals = {};
-    initialStudentsToGrade.forEach((s) => {
-      initialEvals[s.id] = {
-        status: s.existingStatus || "PRESENT",
-        pronunciation: s.existingPronunciation ?? 5,
-        fluency: s.existingFluency ?? 5,
-        vocabulary: s.existingVocabulary ?? 5,
-      };
+    const initialEvals: Record<string, { status: string }> = {};
+    const initialStudents: EligibleStudent[] = [];
+    
+    // Only load students that have an existingStatus
+    task.students.forEach((s) => {
+      if (s.existingStatus) {
+        initialEvals[s.id] = {
+          status: s.existingStatus,
+        };
+        initialStudents.push(s);
+      }
     });
     setStudentEvals(initialEvals);
   };
@@ -157,12 +152,9 @@ export function TutorDashboardClient({
     // Append per-student data as parallel arrays (using all modal students)
     modalStudents.forEach((s) => {
       const eval_ = studentEvals[s.id];
-      if (!eval_) return; // skip if somehow no eval state
+      if (!eval_ || !eval_.status) return; // skip if no eval state or status is empty
       formData.append("studentId", s.id);
       formData.append("status", eval_.status);
-      formData.append("pronunciation", String(eval_.pronunciation));
-      formData.append("fluency", String(eval_.fluency));
-      formData.append("vocabulary", String(eval_.vocabulary));
     });
 
     startTransition(async () => {
@@ -179,7 +171,7 @@ export function TutorDashboardClient({
   const updateStudentEval = (studentId: string, field: string, value: string | number) => {
     setStudentEvals((prev) => ({
       ...prev,
-      [studentId]: { ...(prev[studentId] || { status: "PRESENT", pronunciation: 3, fluency: 3, vocabulary: 3 }), [field]: value },
+      [studentId]: { ...(prev[studentId] || { status: "" }), [field]: value },
     }));
   };
 
@@ -336,7 +328,7 @@ export function TutorDashboardClient({
             <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100 bg-slate-50/50">
               <div>
                 <h3 className="text-lg font-bold text-slate-900">
-                  Attendance {isEvalDay ? "& Evaluation" : ""}
+                  Attendance
                 </h3>
                 <p className="text-sm font-medium text-slate-500 mt-1">
                   {selectedTask.className} • {selectedTask.timeSlot}
@@ -353,12 +345,12 @@ export function TutorDashboardClient({
             {/* Modal Body (Scrollable) */}
             <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-4">
 
-              {/* Search Bar for Adding Students */}
+              {/* Search Bar for Live Filtering */}
               <div className="flex flex-col gap-2">
                 <div className="relative">
                   <input
                     type="text"
-                    placeholder="🔍 Cari nama murid untuk ditambahkan..."
+                    placeholder="🔍 Cari nama murid di kelas ini..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="w-full border border-slate-300 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all bg-white shadow-sm placeholder-slate-400"
@@ -372,53 +364,25 @@ export function TutorDashboardClient({
                     </button>
                   )}
                 </div>
-
-                {/* Dropdown Search Results */}
-                {searchQuery.trim().length > 0 && selectedTask?.globalPoolStudents && (
-                  <div className="border border-slate-200 rounded-xl bg-white shadow-md max-h-48 overflow-y-auto mt-1 z-10 relative divide-y divide-slate-100">
-                    {selectedTask.globalPoolStudents
-                      .filter(s => 
-                        s.name.toLowerCase().includes(searchQuery.toLowerCase()) && 
-                        !modalStudents.some(ms => ms.id === s.id)
-                      )
-                      .map(student => (
-                        <button
-                          key={student.id}
-                          onClick={() => handleAddStudent(student)}
-                          className="w-full text-left px-4 py-3 text-sm hover:bg-indigo-50 focus:bg-indigo-50 transition-colors flex items-center justify-between group"
-                        >
-                          <span className="font-semibold text-slate-700 group-hover:text-indigo-700">{student.name}</span>
-                          <span className="text-xs text-indigo-500 opacity-0 group-hover:opacity-100 transition-opacity font-medium">+ Tambahkan</span>
-                        </button>
-                      ))}
-                    {selectedTask.globalPoolStudents.filter(s => 
-                        s.name.toLowerCase().includes(searchQuery.toLowerCase()) && 
-                        !modalStudents.some(ms => ms.id === s.id)
-                      ).length === 0 && (
-                        <div className="px-4 py-3 text-sm text-slate-500 italic text-center">
-                          Tidak ada murid yang ditemukan atau sudah ditambahkan.
-                        </div>
-                    )}
-                  </div>
-                )}
               </div>
 
               {/* Student Count Info */}
               <div className="flex items-center justify-between border-b border-slate-100 pb-2">
                 <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">
-                  {modalStudents.length} Students Claimed
-                  {!isEvalDay && <span className="ml-2 text-slate-400 normal-case font-medium">(status only — evaluations on designated days)</span>}
+                  {modalStudents.length} Students in Class
                 </p>
               </div>
 
-              {/* Per-Student Attendance & Evaluation */}
-              {modalStudents.length === 0 ? (
+              {/* Per-Student Attendance */}
+              {modalStudents.filter(s => s.name.toLowerCase().includes(searchQuery.toLowerCase())).length === 0 ? (
                 <div className="text-center text-sm text-slate-500 py-8 font-medium">
-                  Belum ada siswa yang diklaim. Silakan cari nama siswa di atas.
+                  Belum ada siswa yang cocok dengan pencarian.
                 </div>
               ) : (
-                modalStudents.map((student) => {
-                  const eval_ = studentEvals[student.id] || { status: "PRESENT", pronunciation: 3, fluency: 3, vocabulary: 3 };
+                modalStudents
+                  .filter(s => s.name.toLowerCase().includes(searchQuery.toLowerCase()))
+                  .map((student) => {
+                  const eval_ = studentEvals[student.id] || { status: "" };
                   return (
                     <div key={student.id} className="bg-slate-50 rounded-xl border border-slate-200 p-4 flex flex-col gap-3">
                       {/* Student Name & Program Badge */}
@@ -447,7 +411,7 @@ export function TutorDashboardClient({
                       </div>
 
                       {/* Attendance Status Buttons */}
-                      <div className="flex flex-wrap gap-1.5">
+                      <div className="flex flex-wrap gap-1.5 mt-2">
                         {ATTENDANCE_OPTIONS.map((opt) => (
                           <button
                             key={opt}
@@ -466,31 +430,6 @@ export function TutorDashboardClient({
                           </button>
                         ))}
                       </div>
-
-                      {/* Evaluation Sliders — ONLY on Evaluation Days AND only if PRESENT */}
-                      {isEvalDay && eval_.status === "PRESENT" && (
-                        <div className="flex flex-col gap-3 pt-2 border-t border-slate-200">
-                          <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest flex items-center gap-1.5">
-                            📝 Evaluation (1-10)
-                          </span>
-                          {(["pronunciation", "fluency", "vocabulary"] as const).map((metric) => (
-                            <div key={metric} className="flex flex-col gap-1">
-                              <div className="flex justify-between text-xs font-medium">
-                                <span className="text-slate-600 capitalize">{metric}</span>
-                                <span className="text-indigo-600 font-bold">{eval_[metric]}</span>
-                              </div>
-                              <input
-                                type="range"
-                                min="1"
-                                max="10"
-                                value={eval_[metric]}
-                                onChange={(e) => updateStudentEval(student.id, metric, parseInt(e.target.value))}
-                                className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
-                              />
-                            </div>
-                          ))}
-                        </div>
-                      )}
                     </div>
                   );
                 })
