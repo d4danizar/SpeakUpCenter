@@ -28,7 +28,6 @@ const formSchema = z
       ["Sekolah", "Kuliah", "Bekerja", "Mencari Pekerjaan", "Lainnya"],
       { message: "Silakan pilih status kesibukan." }
     ),
-    scheduleId: z.string().min(1, "Silakan pilih Jadwal/Batch."),
     discoverySource: z.enum(
       ["Instagram", "TikTok", "Google Maps", "Website", "Teman/Keluarga"],
       { message: "Silakan pilih dari mana Anda mengetahui kami." }
@@ -96,7 +95,6 @@ export function CheckoutForm({
     defaultValues: {
       fullName: leadName,
       phone: leadWa,
-      scheduleId: "",
     },
   });
 
@@ -155,7 +153,6 @@ export function CheckoutForm({
       whatsapp: values.phone,
       school: values.occupation,
       program: program.name,
-      scheduleId: values.scheduleId,
       // Admin Sync Fields
       activeProgram: program.name,
       startDate: values.startDate,
@@ -291,24 +288,6 @@ export function CheckoutForm({
               disabled 
               className="w-full p-3 bg-slate-100 border border-slate-200 rounded-xl text-sm text-slate-500 cursor-not-allowed font-semibold" 
             />
-          </FieldWrap>
-
-          <FieldWrap label="Pilih Jadwal / Batch" required error={errors.scheduleId?.message}>
-            {program.format === "PRIVATE" || program.schedules?.length === 0 ? (
-              <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-xl text-sm text-indigo-700 font-medium">
-                Jadwal akan dikonfirmasi secara personal oleh Tutor.
-                <input type="hidden" {...register("scheduleId")} value="PRIVATE_MANUAL" />
-              </div>
-            ) : (
-              <select {...register("scheduleId")} className={inputCls}>
-                <option value="">-- Tersedia {program.schedules?.length} Jadwal --</option>
-                {program.schedules?.map((sch: any) => (
-                  <option key={sch.id} value={sch.id}>
-                    {sch.title} ({sch.dayOfWeek}, {sch.startTime} - {sch.endTime})
-                  </option>
-                ))}
-              </select>
-            )}
           </FieldWrap>
 
           <FieldWrap label="Rencana Tanggal Mulai" required error={errors.startDate?.message} hint="Pilih tanggal Anda akan memulai program.">

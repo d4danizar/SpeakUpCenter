@@ -120,12 +120,12 @@ export async function editUser(formData: FormData) {
 
 export async function resetPassword(userId: string) {
   try {
-    const passwordHash = await bcrypt.hash("kampunginggris123", 10);
+    const passwordHash = await bcrypt.hash("speakup123", 10);
     await prisma.user.update({
       where: { id: userId },
       data: { passwordHash },
     });
-    
+
     revalidatePath("/admin/users");
     return { success: true };
   } catch (error: any) {
@@ -152,9 +152,9 @@ export async function deleteUser(userId: string) {
     await prisma.attendance.deleteMany({ where: { studentId: userId } });
     // Delete sessions taught by this tutor (will cascade delete their attendances too)
     await prisma.session.deleteMany({ where: { tutorId: userId } });
-    
+
     await prisma.user.delete({ where: { id: userId } });
-    
+
     revalidatePath("/admin/users");
     return { success: true };
   } catch (error: any) {
@@ -162,14 +162,14 @@ export async function deleteUser(userId: string) {
   }
 }
 
-export async function createStudentEnrollment({ 
-  studentId, 
-  programId, 
-  scheduleId 
-}: { 
-  studentId: string; 
-  programId: string; 
-  scheduleId: string; 
+export async function createStudentEnrollment({
+  studentId,
+  programId,
+  scheduleId
+}: {
+  studentId: string;
+  programId: string;
+  scheduleId: string;
 }) {
   // TODO: Logika Enrollment Siswa
   // Karena pendaftaran siswa melewati alur CRM 

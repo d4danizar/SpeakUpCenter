@@ -18,7 +18,7 @@ export async function getProgramsWithCurriculum() {
 
 // Ambil modul + pertemuan dari sebuah program (include attendance untuk Box & Lamp)
 export async function getModulesWithMeetings(programId: string) {
-  return (prisma as any).programModule.findMany({
+  const raw = await (prisma as any).programModule.findMany({
     where: { programId },
     include: {
       meetings: {
@@ -29,7 +29,7 @@ export async function getModulesWithMeetings(programId: string) {
               studentId: true,
               attendance: true,
               predicate: true,
-              aspectScores: true, // Dibutuhkan oleh MeetingLampGrid untuk hasScore
+              aspectScores: true,
             }
           }
         }
@@ -37,6 +37,17 @@ export async function getModulesWithMeetings(programId: string) {
     },
     orderBy: { moduleNumber: "asc" },
   });
+
+  // Normalize rubricData to plain JS (Prisma Json fields need explicit serialization)
+  return raw.map((mod: any) => ({
+    ...mod,
+    meetings: mod.meetings.map((meet: any) => ({
+      ...meet,
+      rubricData: meet.rubricData
+        ? JSON.parse(JSON.stringify(meet.rubricData))
+        : null,
+    })),
+  }));
 }
 
 // Ambil SEMUA murid aktif di program tertentu dari Global Pool.
@@ -99,33 +110,27 @@ export async function upsertMeetingEvaluation(data: {
     return { error: "Data murid dan pertemuan wajib diisi." };
   }
 
-  const isPresent    = data.attendance === "PRESENT";
-  const isAdultSpeak = data.programCategory === "ADULT";
-  const isKiddos     = !isAdultSpeak;
+  const isPresent = data.attendance === "PRESENT";
 
-  // Validasi server hanya untuk attendance valid dan field wajib.
-  // Validasi kelengkapan nilai (predicate/aspectScores) dilakukan di client
-  // agar alur Defer (Isi Nanti) bisa menyimpan PRESENT tanpa score.
-  if (data.predicate && !["A", "B", "C", "D", "E"].includes(data.predicate)) {
-    return { error: "Predikat tidak valid." };
-  }
-
-
+  // Unified: session extension only for SICK/EXCUSED regardless of program
   const needsExtension =
-    isAdultSpeak && (data.attendance === "SICK" || data.attendance === "EXCUSED");
+    data.attendance === "SICK" || data.attendance === "EXCUSED";
 
   try {
     await prisma.$transaction(async (tx) => {
+      // Unified architecture: ALL programs use aspectScores JSON
       const evalData = {
-        attendance: data.attendance,
+        attendance:   data.attendance,
         tutorId,
-        // Kiddos
-        predicate:   isPresent && isKiddos    ? (data.predicate  || null) : null,
-        description: isPresent && isKiddos    ? (data.description?.trim() || null) : null,
-        suggestion:  isPresent && isKiddos    ? (data.suggestion?.trim()  || null) : null,
-        // Adult Speak
-        aspectScores: isPresent && isAdultSpeak ? (data.aspectScores ?? null) : null,
-        tutorNote:    isPresent && isAdultSpeak ? (data.tutorNote?.trim()   || null) : null,
+        // Legacy single-predicate fields — always null in unified system
+        predicate:    null,
+        description:  null,
+        suggestion:   null,
+        // Primary score field for all program types
+        aspectScores: isPresent && data.aspectScores && Object.keys(data.aspectScores).length > 0
+          ? data.aspectScores
+          : null,
+        tutorNote: isPresent ? (data.tutorNote?.trim() || null) : null,
       };
 
       await (tx as any).meetingEvaluation.upsert({
@@ -148,8 +153,11 @@ export async function upsertMeetingEvaluation(data: {
       }
     });
 
-    revalidatePath("/tutor/meeting-evaluations");
-    revalidatePath("/student/dashboard");
+    revalidatePath("/tutor");
+    revalidatePath("/tutor/dashboard");
+    revalidatePath("/tutor/evaluations");
+    revalidatePath("/student/rapor");
+    revalidatePath("/student");
     return { success: true };
   } catch (err: any) {
     console.error("[upsertMeetingEvaluation]", err);

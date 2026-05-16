@@ -2,14 +2,14 @@
 
 import { useState, useTransition, useMemo, useEffect } from "react";
 import { addDays, addMonths, format } from "date-fns";
-import { 
-  Users, 
-  Search, 
-  Download, 
+import {
+  Users,
+  Search,
+  Download,
   Upload,
-  Plus, 
-  ShieldCheck, 
-  GraduationCap, 
+  Plus,
+  ShieldCheck,
+  GraduationCap,
   BookOpen,
   MoreVertical,
   X,
@@ -52,10 +52,10 @@ function calculateEndDate(program: string, startDate: string, duration: string):
     case "Asrama": {
       if (!duration) return null;
       switch (duration) {
-        case "1_WEEK":   return addDays(start, 5);
-        case "2_WEEKS":  return addDays(start, 12);
-        case "3_WEEKS":  return addDays(start, 19);
-        case "1_MONTH":  return addDays(start, 26);
+        case "1_WEEK": return addDays(start, 5);
+        case "2_WEEKS": return addDays(start, 12);
+        case "3_WEEKS": return addDays(start, 19);
+        case "1_MONTH": return addDays(start, 26);
         case "2_MONTHS": return addDays(start, 54);
         default: return null;
       }
@@ -70,11 +70,11 @@ function calculateEndDate(program: string, startDate: string, duration: string):
   }
 }
 
-export function UsersClientView({ 
+export function UsersClientView({
   initialUsers,
   activeBranch,
   programs = [],
-}: { 
+}: {
   initialUsers: UserType[];
   activeBranch?: string;
   programs?: { id: string; name: string }[];
@@ -84,7 +84,7 @@ export function UsersClientView({
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<UserType | null>(null);
   const [isPending, startTransition] = useTransition();
-  
+
   // === ADD FORM STATE ===
   const [newUserRole, setNewUserRole] = useState<string>("STUDENT");
   const [formProgram, setFormProgram] = useState("");
@@ -137,7 +137,7 @@ export function UsersClientView({
       if (editBatch) formData.set("batchSchedule", editBatch);
       if (editProgramBatch) formData.set("programBatch", editProgramBatch);
     }
-    
+
     startTransition(async () => {
       const res = await editUser(formData);
       if (res.error) {
@@ -172,7 +172,7 @@ export function UsersClientView({
   };
 
   const handleResetPassword = (id: string) => {
-    if (window.confirm("Are you sure you want to reset this user's password to default ('kampunginggris123')?")) {
+    if (window.confirm("Are you sure you want to reset this user's password to default ('speakup123')?")) {
       startTransition(async () => {
         const res = await resetPassword(id);
         if (res.error) alert(res.error);
@@ -212,7 +212,7 @@ export function UsersClientView({
     if (formDuration) formData.set("durationOption", formDuration);
     if (formBatch) formData.set("batchSchedule", formBatch);
     if (formProgramBatch) formData.set("programBatch", formProgramBatch);
-    
+
     startTransition(async () => {
       const res = await createUser(formData);
       if (res.error) {
@@ -228,8 +228,8 @@ export function UsersClientView({
   // Filter users based on tab and search query
   const filteredUsers = initialUsers.filter((user) => {
     const matchesTab = activeTab === "ALL" || user.role === activeTab;
-    const matchesSearch = 
-      user.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    const matchesSearch =
+      user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       user.email.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesTab && matchesSearch;
   });
@@ -285,19 +285,19 @@ export function UsersClientView({
   const getRoleBadge = (role: string) => {
     switch (role) {
       case "SUPER_ADMIN":
-        return <span className="inline-flex items-center gap-1 bg-red-50 text-red-700 border border-red-200 px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wide"><ShieldCheck className="w-3 h-3"/> Super Admin</span>;
+        return <span className="inline-flex items-center gap-1 bg-red-50 text-red-700 border border-red-200 px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wide"><ShieldCheck className="w-3 h-3" /> Super Admin</span>;
       case "MANAGER":
-        return <span className="inline-flex items-center gap-1 bg-purple-50 text-purple-700 border border-purple-200 px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wide"><ShieldCheck className="w-3 h-3"/> Manager</span>;
+        return <span className="inline-flex items-center gap-1 bg-purple-50 text-purple-700 border border-purple-200 px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wide"><ShieldCheck className="w-3 h-3" /> Manager</span>;
       case "CS":
-        return <span className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 border border-indigo-200 px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wide"><ShieldCheck className="w-3 h-3"/> CS</span>;
+        return <span className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 border border-indigo-200 px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wide"><ShieldCheck className="w-3 h-3" /> CS</span>;
       case "MARKETING":
-        return <span className="inline-flex items-center gap-1 bg-pink-50 text-pink-700 border border-pink-200 px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wide"><ShieldCheck className="w-3 h-3"/> Marketing</span>;
+        return <span className="inline-flex items-center gap-1 bg-pink-50 text-pink-700 border border-pink-200 px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wide"><ShieldCheck className="w-3 h-3" /> Marketing</span>;
       case "CREATOR":
-        return <span className="inline-flex items-center gap-1 bg-orange-50 text-orange-700 border border-orange-200 px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wide"><ShieldCheck className="w-3 h-3"/> Creator</span>;
+        return <span className="inline-flex items-center gap-1 bg-orange-50 text-orange-700 border border-orange-200 px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wide"><ShieldCheck className="w-3 h-3" /> Creator</span>;
       case "TUTOR":
-        return <span className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 border border-blue-200 px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wide"><BookOpen className="w-3 h-3"/> Tutor</span>;
+        return <span className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 border border-blue-200 px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wide"><BookOpen className="w-3 h-3" /> Tutor</span>;
       default:
-        return <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wide"><GraduationCap className="w-3 h-3"/> Student</span>;
+        return <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wide"><GraduationCap className="w-3 h-3" /> Student</span>;
     }
   };
 
@@ -438,9 +438,9 @@ export function UsersClientView({
             Manage all students, tutors, and administrators.
           </p>
         </div>
-        
+
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-          <button 
+          <button
             onClick={handleExportExcel}
             disabled={isExporting}
             className="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold text-slate-700 bg-white border border-slate-300 rounded-xl hover:bg-slate-50 hover:text-slate-900 transition-all shadow-sm disabled:opacity-50"
@@ -464,7 +464,7 @@ export function UsersClientView({
             <Upload className="w-4 h-4" />
             Import Murid
           </a>
-          <button 
+          <button
             onClick={() => setIsAddModalOpen(true)}
             className="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 transition-all shadow-sm"
           >
@@ -476,21 +476,20 @@ export function UsersClientView({
 
       {/* Main Content Area */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col w-full text-left overflow-x-auto">
-        
+
         {/* Toolbar (Tabs & Search) */}
         <div className="p-4 sm:p-5 border-b border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-50/50">
-          
+
           {/* Tabs */}
           <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-lg w-fit">
             {(["ALL", "TUTOR", "STUDENT"] as const).map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
-                className={`px-4 py-1.5 text-sm font-semibold rounded-md transition-all ${
-                  activeTab === tab 
-                    ? "bg-white text-indigo-700 shadow-sm ring-1 ring-slate-200/50" 
+                className={`px-4 py-1.5 text-sm font-semibold rounded-md transition-all ${activeTab === tab
+                    ? "bg-white text-indigo-700 shadow-sm ring-1 ring-slate-200/50"
                     : "text-slate-500 hover:text-slate-700"
-                }`}
+                  }`}
               >
                 {tab === "ALL" ? "All Users" : `${tab.charAt(0) + tab.slice(1).toLowerCase()}s`}
               </button>
@@ -582,7 +581,7 @@ export function UsersClientView({
                       <div className="flex items-center justify-end gap-3">
                         {user.role === "STUDENT" && (
                           user.status === "ACTIVE" ? (
-                            <button 
+                            <button
                               onClick={() => handleMakeAlumni(user.id, user.name)}
                               disabled={isPending}
                               className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition-colors shadow-sm disabled:opacity-50"
@@ -590,7 +589,7 @@ export function UsersClientView({
                               <GraduationCap className="w-3.5 h-3.5" /> Luluskan
                             </button>
                           ) : (
-                            <button 
+                            <button
                               onClick={() => handleReactivate(user.id, user.name)}
                               disabled={isPending}
                               className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-slate-600 bg-slate-50 border border-slate-200 rounded-lg hover:bg-slate-100 transition-colors shadow-sm disabled:opacity-50"
@@ -605,22 +604,22 @@ export function UsersClientView({
                           items={[
                             {
                               label: "Edit User",
-                            icon: <Pencil />,
-                            onClick: () => { setEditingUser(user); }
-                          },
-                          {
-                            label: "Reset Password",
-                            icon: <Key />,
-                            onClick: () => handleResetPassword(user.id)
-                          },
-                          {
-                            label: "Delete User",
-                            icon: <Trash2 />,
-                            onClick: () => handleDeleteUser(user.id, user.name),
-                            danger: true
-                          }
-                        ]}
-                      />
+                              icon: <Pencil />,
+                              onClick: () => { setEditingUser(user); }
+                            },
+                            {
+                              label: "Reset Password",
+                              icon: <Key />,
+                              onClick: () => handleResetPassword(user.id)
+                            },
+                            {
+                              label: "Delete User",
+                              icon: <Trash2 />,
+                              onClick: () => handleDeleteUser(user.id, user.name),
+                              danger: true
+                            }
+                          ]}
+                        />
                       </div>
                     </td>
                   </tr>
@@ -629,7 +628,7 @@ export function UsersClientView({
             </tbody>
           </table>
         </div>
-        
+
         {/* Footer info */}
         <div className="bg-slate-50/80 p-4 border-t border-slate-200 text-xs font-medium text-slate-500 text-center sm:text-left">
           Showing {filteredUsers.length} of {initialUsers.length} total users
@@ -642,7 +641,7 @@ export function UsersClientView({
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between p-5 border-b border-slate-100 bg-slate-50/50">
               <h2 className="text-lg font-bold text-slate-900">Add New User</h2>
-              <button 
+              <button
                 type="button"
                 onClick={() => { setIsAddModalOpen(false); resetAddForm(); }}
                 className="p-1 text-slate-400 hover:text-slate-700 bg-white hover:bg-slate-100 rounded-lg transition-colors border border-slate-200 shadow-sm"
@@ -673,9 +672,9 @@ export function UsersClientView({
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <label className="text-xs font-bold text-slate-600 uppercase tracking-widest">Role</label>
-                  <select 
-                    name="role" 
-                    required 
+                  <select
+                    name="role"
+                    required
                     value={newUserRole}
                     onChange={(e) => { setNewUserRole(e.target.value); setFormProgram(""); setFormStartDate(""); setFormDuration(""); setFormBatch(""); }}
                     className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none font-medium text-slate-700"
@@ -697,7 +696,7 @@ export function UsersClientView({
                 )}
               </div>
               <div className="p-5 border-t border-slate-100 gap-3 flex justify-end bg-slate-50/50">
-                <button 
+                <button
                   type="button"
                   onClick={() => { setIsAddModalOpen(false); resetAddForm(); }}
                   disabled={isPending}
@@ -705,12 +704,12 @@ export function UsersClientView({
                 >
                   Cancel
                 </button>
-                <button 
+                <button
                   type="submit"
                   disabled={isPending}
                   className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-sm transition-colors disabled:opacity-50"
                 >
-                  {isPending ? <><Loader2 className="w-4 h-4 animate-spin"/> Saving...</> : "Save User"}
+                  {isPending ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving...</> : "Save User"}
                 </button>
               </div>
             </form>
@@ -724,7 +723,7 @@ export function UsersClientView({
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between p-5 border-b border-slate-100 bg-slate-50/50">
               <h2 className="text-lg font-bold text-slate-900">Edit User</h2>
-              <button 
+              <button
                 type="button"
                 onClick={() => setEditingUser(null)}
                 className="p-1 text-slate-400 hover:text-slate-700 bg-white hover:bg-slate-100 rounded-lg transition-colors border border-slate-200 shadow-sm"
@@ -750,11 +749,11 @@ export function UsersClientView({
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <label className="text-xs font-bold text-slate-600 uppercase tracking-widest">Role</label>
-                  <select 
-                    name="role" 
+                  <select
+                    name="role"
                     value={editRole}
                     onChange={(e) => { setEditRole(e.target.value); if (e.target.value !== "STUDENT") { setEditProgram(""); setEditStartDate(""); setEditDuration(""); setEditBatch(""); setEditProgramBatch(""); } }}
-                    required 
+                    required
                     className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none font-medium text-slate-700"
                   >
                     <option value="STUDENT">Student</option>
@@ -774,7 +773,7 @@ export function UsersClientView({
                 )}
               </div>
               <div className="p-5 border-t border-slate-100 gap-3 flex justify-end bg-slate-50/50">
-                <button 
+                <button
                   type="button"
                   onClick={() => setEditingUser(null)}
                   disabled={isPending}
@@ -782,12 +781,12 @@ export function UsersClientView({
                 >
                   Cancel
                 </button>
-                <button 
+                <button
                   type="submit"
                   disabled={isPending}
                   className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-sm transition-colors disabled:opacity-50"
                 >
-                  {isPending ? <><Loader2 className="w-4 h-4 animate-spin"/> Saving...</> : "Save Changes"}
+                  {isPending ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving...</> : "Save Changes"}
                 </button>
               </div>
             </form>

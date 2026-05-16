@@ -1,343 +1,391 @@
 "use client";
 
-import { useState, useTransition, useEffect } from "react";
-import { Loader2, Users, FileText, CheckCircle, BrainCircuit } from "lucide-react";
-import { getProgramsForFilter, getStudentsByProgram, submitAdHocEvaluation } from "./actions";
-import { EVALUATION_RUBRICS, EvaluationGrade } from "../../../../lib/constants/evaluationRubrics";
+import { useState, useEffect, useTransition } from "react";
+import {
+  ChevronDown, Users, Loader2, Edit2, CheckCircle,
+  Clock, XCircle, Info, BookOpen,
+} from "lucide-react";
+import { getClassesWithModules, getMeetingStudentEvals, getRubricDataForMeeting } from "./actions";
+import MeetingEvalForm from "../meeting-evaluations/MeetingEvalForm";
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+type RubricAspect = {
+  aspectName: string;
+  A?: { desc?: string; saran?: string };
+  B?: { desc?: string; saran?: string };
+  C?: { desc?: string; saran?: string };
+  D?: { desc?: string; saran?: string };
+  E?: { desc?: string; saran?: string };
+};
+
+type Meeting = {
+  id: string;
+  meetingNumber: number;
+  material: string;
+  isPerformance: boolean;
+  rubricData?: RubricAspect[] | null;
+};
+
+type Module = {
+  id: string;
+  moduleNumber: number;
+  title: string;
+  meetings: Meeting[];
+};
+
+type ProgramClass = {
+  id: string;
+  name: string;
+  category: string;
+  modules: Module[];
+};
+
+type StudentRow = {
+  id: string;
+  name: string;
+  eval: {
+    attendance?: string;
+    predicate?: string | null;
+    description?: string | null;
+    suggestion?: string | null;
+    aspectScores?: Record<string, string> | null;
+    tutorNote?: string | null;
+  } | null;
+};
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const ATTENDANCE_BADGE: Record<string, { label: string; cls: string; icon: React.ReactNode }> = {
+  PRESENT:  { label: "Hadir",  cls: "bg-emerald-50 text-emerald-700 border-emerald-200", icon: <CheckCircle className="w-3 h-3" /> },
+  ABSENT:   { label: "Alpa",   cls: "bg-rose-50 text-rose-700 border-rose-200",         icon: <XCircle    className="w-3 h-3" /> },
+  SICK:     { label: "Sakit",  cls: "bg-amber-50 text-amber-700 border-amber-200",       icon: <Clock      className="w-3 h-3" /> },
+  EXCUSED:  { label: "Izin",   cls: "bg-slate-100 text-slate-600 border-slate-200",      icon: <Clock      className="w-3 h-3" /> },
+};
+
+const GRADE_DOT: Record<string, string> = {
+  A: "bg-emerald-500", B: "bg-blue-500", C: "bg-amber-400", D: "bg-orange-500", E: "bg-rose-500",
+};
+
+function ScoreSummary({ scores, predicate }: { scores?: Record<string, string> | null; predicate?: string | null }) {
+  if (scores && Object.keys(scores).length > 0) {
+    const vals = Object.values(scores).slice(0, 4);
+    return (
+      <div className="flex gap-1 flex-wrap">
+        {vals.map((g, i) => (
+          <span key={i} className={`w-5 h-5 rounded text-[10px] font-black text-white flex items-center justify-center ${GRADE_DOT[g] ?? "bg-slate-400"}`}>{g}</span>
+        ))}
+        {Object.keys(scores).length > 4 && <span className="text-[10px] text-slate-400 self-center">+{Object.keys(scores).length - 4}</span>}
+      </div>
+    );
+  }
+  if (predicate) {
+    return <span className={`w-7 h-7 rounded-lg text-sm font-black text-white flex items-center justify-center ${GRADE_DOT[predicate] ?? "bg-slate-400"}`}>{predicate}</span>;
+  }
+  return <span className="text-xs text-slate-400 italic">—</span>;
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
 
 export function EvaluationsClient({ tutorId }: { tutorId: string }) {
-  // Cascading Selection State
-  const [programs, setPrograms] = useState<any[]>([]);
-  const [selectedProgramId, setSelectedProgramId] = useState<string>("");
-  const [students, setStudents] = useState<any[]>([]);
-  const [selectedStudentId, setSelectedStudentId] = useState<string>("");
-  const [selectedModule, setSelectedModule] = useState<string>("");
-  const [selectedSession, setSelectedSession] = useState<string>("");
+  const [classes, setClasses] = useState<ProgramClass[]>([]);
+  const [loadingClasses, setLoadingClasses] = useState(true);
 
-  const [loadingPrograms, setLoadingPrograms] = useState(true);
+  const [selectedClassId, setSelectedClassId] = useState("");
+  const [selectedMeetingId, setSelectedMeetingId] = useState("");
+
+  // Live rubricData fetched fresh from DB when meeting is selected
+  const [liveRubricData, setLiveRubricData] = useState<any[] | null>(null);
+
+  const [students, setStudents] = useState<StudentRow[]>([]);
   const [loadingStudents, setLoadingStudents] = useState(false);
-  const [isPending, startTransition] = useTransition();
 
-  // Selected config
-  const selectedProgram = programs.find((p) => p.id === selectedProgramId);
-  
-  let rubricKey: "KIDS" | "TEENS" | "ADULTS" | null = null;
-  if (selectedProgram) {
-    const programName = selectedProgram.name.toLowerCase();
-    rubricKey = "ADULTS"; // Default fallback
-    if (programName.includes("kids") || programName.includes("kiddos")) {
-      rubricKey = "KIDS";
-    } else if (programName.includes("teens") || programName.includes("remaja")) {
-      rubricKey = "TEENS";
+  // Modal edit state
+  const [editStudent, setEditStudent] = useState<StudentRow | null>(null);
+
+  // Track rubric loading state separately for UI blocking
+  const [loadingRubric, setLoadingRubric] = useState(false);
+
+  // ── Load classes on mount ──
+  useEffect(() => {
+    getClassesWithModules().then((res) => {
+      setClasses(res);
+      setLoadingClasses(false);
+    });
+  }, []);
+
+  // ── Load student evals + rubricData when meeting changes ──
+  useEffect(() => {
+    if (!selectedMeetingId || !selectedClassId) {
+      setStudents([]);
+      setLiveRubricData(null);
+      return;
+    }
+    setLoadingStudents(true);
+    setLoadingRubric(true);
+    setLiveRubricData(null);
+    // Fetch both in parallel
+    Promise.all([
+      getMeetingStudentEvals(selectedMeetingId, selectedClassId),
+      getRubricDataForMeeting(selectedMeetingId),
+    ]).then(([rows, rubric]) => {
+      setStudents(rows);
+      setLiveRubricData(rubric);
+      setLoadingStudents(false);
+      setLoadingRubric(false);
+    }).catch(() => {
+      setLoadingStudents(false);
+      setLoadingRubric(false);
+    });
+  }, [selectedMeetingId, selectedClassId]);
+
+  // ── Derived data ──
+  const selectedClass = classes.find((c) => c.id === selectedClassId);
+
+  // Find selected meeting object (metadata only — rubricData comes from liveRubricData)
+  let selectedMeeting: Meeting | null = null;
+  if (selectedClass && selectedMeetingId) {
+    for (const mod of selectedClass.modules) {
+      const m = mod.meetings.find((mt) => mt.id === selectedMeetingId);
+      if (m) { selectedMeeting = m; break; }
     }
   }
 
-  // Form State
-  const [metricsData, setMetricsData] = useState<Record<string, EvaluationGrade>>({});
-  const [notes, setNotes] = useState("");
+  // Build meetingDesc with LIVE rubricData (not stale state)
+  const meetingDesc = selectedMeeting
+    ? { ...selectedMeeting, rubricData: liveRubricData }
+    : null;
 
-  // Load Programs on Mount
-  useEffect(() => {
-    let isMounted = true;
-    getProgramsForFilter().then((res) => {
-      if (isMounted) {
-        setPrograms(res);
-        setLoadingPrograms(false);
+  // Find module title for selected meeting
+  let selectedModuleTitle = "";
+  if (selectedClass && selectedMeetingId) {
+    for (const mod of selectedClass.modules) {
+      if (mod.meetings.find((mt) => mt.id === selectedMeetingId)) {
+        selectedModuleTitle = mod.title;
+        break;
       }
-    });
-    return () => { isMounted = false; };
-  }, []);
-
-  // Load Students when Program changes
-  useEffect(() => {
-    if (!selectedProgramId) {
-      setStudents([]);
-      setSelectedStudentId("");
-      return;
     }
-    
-    let isMounted = true;
+  }
+
+  const meetingLabel = selectedMeeting
+    ? `${selectedModuleTitle} — Pertemuan ${selectedMeeting.meetingNumber}`
+    : "";
+
+  const totalStudents = students.length;
+  const dinilai = students.filter(
+    (s) => s.eval && (s.eval.predicate || (s.eval.aspectScores && Object.keys(s.eval.aspectScores).length > 0))
+  ).length;
+
+  const refreshStudents = () => {
+    if (!selectedMeetingId || !selectedClassId) return;
     setLoadingStudents(true);
-    getStudentsByProgram(selectedProgramId).then((res) => {
-      if (isMounted) {
-        setStudents(res);
-        setLoadingStudents(false);
-        // Reset cascaded fields
-        setSelectedStudentId("");
-        setSelectedModule("");
-        setSelectedSession("");
-      }
-    });
-
-    return () => { isMounted = false; };
-  }, [selectedProgramId]);
-  
-  // Auto-select Module if there's only 1 option (e.g. ADULTS)
-  const moduleOptions = rubricKey ? Object.keys(EVALUATION_RUBRICS[rubricKey]) : [];
-  
-  useEffect(() => {
-    if (moduleOptions.length === 1 && selectedModule !== moduleOptions[0]) {
-      setSelectedModule(moduleOptions[0]);
-    }
-  }, [moduleOptions.length, moduleOptions[0]]);
-
-  // Reset form when rubric parameters change
-  useEffect(() => {
-    setMetricsData({});
-    setNotes("");
-  }, [selectedModule, selectedSession, selectedStudentId]);
-
-  // Handle Radio Input Change
-  const handleMetricChange = (metric: string, val: EvaluationGrade) => {
-    setMetricsData(prev => ({ ...prev, [metric]: val }));
-  };
-
-  const handleFormSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedProgramId || !selectedStudentId || !selectedModule || !selectedSession) {
-      alert("Pastikan semua field (Program, Murid, Modul, Sesi) telah dipilih.");
-      return;
-    }
-
-    // Verify all metrics are filled
-    const expectedMetrics = EVALUATION_RUBRICS[rubricKey!][selectedModule][selectedSession] || [];
-    const missingMetrics = expectedMetrics.filter(m => !metricsData[m]);
-    if (missingMetrics.length > 0) {
-      alert(`Anda belum menilai metrik berikut:\n- ${missingMetrics.join("\n- ")}`);
-      return;
-    }
-
-    startTransition(async () => {
-      const res = await submitAdHocEvaluation(
-        selectedProgramId,
-        selectedStudentId,
-        tutorId,
-        selectedModule,
-        selectedSession,
-        notes,
-        JSON.stringify(metricsData)
-      );
-
-      if (res.error) {
-        alert(res.error);
-      } else {
-        alert("Evaluasi berhasil disimpan!");
-        // Reset sub-form to simulate completion
-        setSelectedModule("");
-        setSelectedSession("");
-        setMetricsData({});
-        setNotes("");
-        // Optional: Refetch students to show updated status
-        const updatedStudents = await getStudentsByProgram(selectedProgramId);
-        setStudents(updatedStudents);
-      }
+    getMeetingStudentEvals(selectedMeetingId, selectedClassId).then((res) => {
+      setStudents(res);
+      setLoadingStudents(false);
     });
   };
-
-  // Derivative Options
-  const sessionOptions = rubricKey && selectedModule ? Object.keys(EVALUATION_RUBRICS[rubricKey as "KIDS"|"TEENS"|"ADULTS"][selectedModule]) : [];
-  const activeMetricsList = rubricKey && selectedModule && selectedSession 
-    ? (EVALUATION_RUBRICS[rubricKey as "KIDS"|"TEENS"|"ADULTS"][selectedModule][selectedSession] || []) 
-    : [];
 
   return (
-    <div className="flex flex-col gap-6 w-full max-w-4xl mx-auto pb-16">
-      
-      {/* CASCADING FILTER SECTION */}
-      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col gap-5">
-        <h2 className="font-bold text-slate-800 text-lg flex items-center gap-2">
-          <BrainCircuit className="w-5 h-5 text-indigo-500" />
-          Kriteria Pemilihan Evaluasi
+    <div className="flex flex-col gap-5 w-full max-w-5xl mx-auto pb-16">
+
+      {/* ── Filter Bar ── */}
+      <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col gap-4">
+        <h2 className="font-bold text-slate-800 flex items-center gap-2 text-base">
+          <BookOpen className="w-5 h-5 text-indigo-500" />
+          Nilai per Pertemuan
         </h2>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          
-          {/* 1. Pilih Program */}
-          <div className="flex flex-col gap-2">
-            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">1. Program Kelas</label>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* 1. Pilih Kelas */}
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">1. Kelas / Program</label>
             <div className="relative">
               <select
-                value={selectedProgramId}
-                onChange={(e) => setSelectedProgramId(e.target.value)}
-                disabled={loadingPrograms}
-                className="w-full appearance-none bg-slate-50 border border-slate-200 py-2.5 pl-4 pr-10 rounded-xl text-sm font-medium text-slate-700 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 disabled:opacity-50 transition-colors"
-                required
+                value={selectedClassId}
+                onChange={(e) => { setSelectedClassId(e.target.value); setSelectedMeetingId(""); setStudents([]); }}
+                disabled={loadingClasses}
+                className="w-full appearance-none bg-slate-50 border border-slate-200 py-2.5 pl-4 pr-10 rounded-xl text-sm font-medium text-slate-700 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 disabled:opacity-50"
               >
-                <option value="">-- Pilih Program --</option>
-                {programs.map((p) => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
+                <option value="">— Pilih Kelas —</option>
+                {classes.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
                 ))}
               </select>
               <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
-                {loadingPrograms ? <Loader2 className="w-4 h-4 animate-spin text-indigo-500" /> : <svg className="w-4 h-4 text-slate-400" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" /></svg>}
+                {loadingClasses ? <Loader2 className="w-4 h-4 animate-spin text-indigo-500" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
               </div>
             </div>
           </div>
 
-          {/* 2. Pilih Murid */}
-          <div className="flex flex-col gap-2">
-            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">2. Murid Dinilai</label>
+          {/* 2. Pilih Modul & Pertemuan */}
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">2. Modul & Pertemuan</label>
             <div className="relative">
               <select
-                value={selectedStudentId}
-                onChange={(e) => setSelectedStudentId(e.target.value)}
-                disabled={!selectedProgramId || loadingStudents}
-                className="w-full appearance-none bg-slate-50 border border-slate-200 py-2.5 pl-4 pr-10 rounded-xl text-sm font-medium text-slate-700 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 disabled:opacity-50 transition-colors"
-                required
+                value={selectedMeetingId}
+                onChange={(e) => setSelectedMeetingId(e.target.value)}
+                disabled={!selectedClassId || !selectedClass?.modules.length}
+                className="w-full appearance-none bg-slate-50 border border-slate-200 py-2.5 pl-4 pr-10 rounded-xl text-sm font-medium text-slate-700 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 disabled:opacity-50"
               >
-                <option value="">-- Pilih Murid --</option>
-                {students.map((s) => (
-                   <option key={s.id} value={s.id}>
-                     {s.name} {s.evaluationsReceived?.length > 0 ? "✓" : ""}
-                   </option>
+                <option value="">— Pilih Pertemuan —</option>
+                {selectedClass?.modules.map((mod) => (
+                  <optgroup key={mod.id} label={`Modul ${mod.moduleNumber}: ${mod.title}`}>
+                    {mod.meetings.map((meet) => (
+                      <option key={meet.id} value={meet.id}>
+                        Pertemuan {meet.meetingNumber} — {meet.material}
+                      </option>
+                    ))}
+                  </optgroup>
                 ))}
               </select>
               <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
-                {loadingStudents ? <Loader2 className="w-4 h-4 animate-spin text-indigo-500" /> : <svg className="w-4 h-4 text-slate-400" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" /></svg>}
+                <ChevronDown className="w-4 h-4 text-slate-400" />
               </div>
             </div>
           </div>
-
-          {/* 3. Pilih Modul */}
-          <div className="flex flex-col gap-2">
-            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">3. Modul</label>
-            <div className="relative">
-              <select
-                value={selectedModule}
-                onChange={(e) => setSelectedModule(e.target.value)}
-                disabled={!selectedStudentId || moduleOptions.length === 0}
-                className="w-full appearance-none bg-slate-50 border border-slate-200 py-2.5 pl-4 pr-10 rounded-xl text-sm font-medium text-slate-700 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 disabled:opacity-50 transition-colors"
-                required
-              >
-                <option value="">-- Modul --</option>
-                {moduleOptions.map(mod => <option key={mod} value={mod}>{mod}</option>)}
-              </select>
-              <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
-                <svg className="w-4 h-4 text-slate-400" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
-              </div>
-            </div>
-          </div>
-
-          {/* 4. Pilih Sesi */}
-          <div className="flex flex-col gap-2">
-            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">4. Tipe Sesi</label>
-            <div className="relative">
-              <select
-                value={selectedSession}
-                onChange={(e) => setSelectedSession(e.target.value)}
-                disabled={!selectedModule || sessionOptions.length === 0}
-                className="w-full appearance-none bg-slate-50 border border-slate-200 py-2.5 pl-4 pr-10 rounded-xl text-sm font-medium text-slate-700 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 disabled:opacity-50 transition-colors"
-                required
-              >
-                <option value="">-- Sesi --</option>
-                {sessionOptions.map(ses => <option key={ses} value={ses}>{ses}</option>)}
-              </select>
-              <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
-                <svg className="w-4 h-4 text-slate-400" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
-              </div>
-            </div>
-          </div>
-
         </div>
       </div>
 
-      {/* EVALUATION FORM */}
-      {activeMetricsList.length > 0 && selectedStudentId ? (
-        <form onSubmit={handleFormSubmit} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-300">
-          <div className="bg-indigo-50 border-b border-indigo-100 p-5 flex items-start justify-between">
+      {/* ── Student Table ── */}
+      {selectedMeetingId ? (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+
+          {/* Table Header */}
+          <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between flex-wrap gap-3">
             <div>
-              <h3 className="font-bold text-indigo-900 text-lg">Formulir Pengisian Evaluasi</h3>
-              <p className="text-sm text-indigo-700/70 mt-1">
-                Kamus Rubrik: <strong>{rubricKey}</strong> | {selectedModule} - {selectedSession}
-              </p>
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{meetingLabel}</p>
+              <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2 mt-0.5">
+                <Users className="w-4 h-4 text-indigo-400" />
+                {totalStudents} Murid Terdaftar
+                {!loadingStudents && (
+                  <span className="text-xs font-semibold text-indigo-600 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-full">
+                    {dinilai}/{totalStudents} Dinilai
+                  </span>
+                )}
+              </h3>
             </div>
-            <div className="px-3 py-1 bg-white rounded-lg border border-indigo-200 text-indigo-700 text-xs font-bold shadow-sm">
-              {students.find(s => s.id === selectedStudentId)?.name}
-            </div>
-          </div>
 
-          <div className="p-6 flex flex-col gap-8">
-            
-            <div className="flex flex-col gap-5">
-              <h4 className="text-sm font-bold text-slate-800 border-b gap-2 border-slate-100 pb-2 flex items-center">
-                <span>Indikator Penilaian</span>
-                <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-md uppercase font-bold tracking-wider">A (Terbaik) - E</span>
-              </h4>
-              
-              <div className="flex flex-col gap-4">
-                {activeMetricsList.map((metric, idx) => (
-                  <div key={idx} className="flex flex-col md:flex-row md:items-center justify-between p-4 rounded-xl border border-slate-100 bg-slate-50 hover:bg-white hover:border-indigo-100 transition-colors gap-4">
-                    <span className="text-sm font-semibold text-slate-700 md:max-w-xs">{metric}</span>
-                    
-                    <div className="flex items-center gap-3 bg-white p-1 rounded-lg border border-slate-200 shadow-sm shrink-0">
-                      {(["A", "B", "C", "D", "E"] as EvaluationGrade[]).map((grade) => {
-                        const isSelected = metricsData[metric] === grade;
-                        // Color styling depending on grade
-                        let colorClass = "text-slate-600 hover:bg-slate-50";
-                        let activeColorClass = "bg-indigo-600 text-white font-bold ring-2 ring-indigo-600 ring-offset-1";
-                        if (grade === "A") activeColorClass = "bg-emerald-500 text-white font-bold ring-2 ring-emerald-500 ring-offset-1";
-                        else if (grade === "E") activeColorClass = "bg-rose-500 text-white font-bold ring-2 ring-rose-500 ring-offset-1";
-                        
-                        return (
-                          <label 
-                            key={grade} 
-                            className={`relative cursor-pointer flex items-center justify-center w-8 h-8 rounded-md text-sm transition-all select-none
-                              ${isSelected ? activeColorClass : colorClass}`}
-                          >
-                            <input
-                              type="radio"
-                              name={`metric-${idx}`}
-                              value={grade}
-                              checked={isSelected}
-                              onChange={() => handleMetricChange(metric, grade)}
-                              className="sr-only"
-                              required
-                            />
-                            {grade}
-                          </label>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
+            {/* Progress bar */}
+            {!loadingStudents && totalStudents > 0 && (
+              <div className="flex items-center gap-2 min-w-[120px]">
+                <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-indigo-500 rounded-full transition-all duration-500"
+                    style={{ width: `${(dinilai / totalStudents) * 100}%` }}
+                  />
+                </div>
+                <span className="text-[10px] font-bold text-slate-500">{Math.round((dinilai / totalStudents) * 100)}%</span>
               </div>
-            </div>
-
-            <div className="flex flex-col gap-3">
-               <h4 className="text-sm font-bold text-slate-800 border-b border-slate-100 pb-2">Catatan Pelatih</h4>
-               <textarea
-                  rows={4}
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  placeholder="Ceritakan observasi tambahan tentang anak ini (bisa dikosongi)..."
-                  className="w-full text-sm p-4 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 bg-slate-50 hover:bg-white transition-colors"
-                />
-            </div>
-
+            )}
           </div>
 
-          <div className="bg-slate-50 border-t border-slate-100 p-5 flex justify-end gap-3">
-             <button
-                type="submit"
-                disabled={isPending}
-                className="inline-flex items-center gap-2 px-8 py-2.5 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-md shadow-indigo-600/20 active:scale-[0.98] transition-all disabled:opacity-50 disabled:active:scale-100"
-              >
-                {isPending ? <><Loader2 className="w-4 h-4 animate-spin" /> Menyimpan...</> : "Simpan Penilaian Rapor"}
-              </button>
-          </div>
-        </form>
+          {loadingStudents ? (
+            <div className="flex items-center justify-center py-16 gap-3 text-slate-400">
+              <Loader2 className="w-5 h-5 animate-spin" />
+              <span className="text-sm font-medium">Memuat data murid...</span>
+            </div>
+          ) : students.length === 0 ? (
+            <div className="py-16 text-center text-sm text-slate-400">
+              <Users className="w-8 h-8 mx-auto mb-2 opacity-30" />
+              <p>Belum ada murid yang terdaftar di kelas ini.</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-100">
+                    <th className="text-left px-5 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider w-8">#</th>
+                    <th className="text-left px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Nama Murid</th>
+                    <th className="text-left px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Kehadiran</th>
+                    <th className="text-left px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Nilai Aspek</th>
+                    <th className="text-right px-5 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {students.map((student, idx) => {
+                    const att = student.eval?.attendance;
+                    const attCfg = att ? ATTENDANCE_BADGE[att] : null;
+                    const hasScore = !!(
+                      student.eval?.predicate ||
+                      (student.eval?.aspectScores && Object.keys(student.eval.aspectScores).length > 0)
+                    );
+
+                    return (
+                      <tr key={student.id} className="hover:bg-slate-50/60 transition-colors">
+                        <td className="px-5 py-3.5 text-xs text-slate-400 font-bold">{idx + 1}</td>
+                        <td className="px-4 py-3.5">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-7 h-7 rounded-full bg-indigo-100 text-indigo-700 text-[11px] font-black flex items-center justify-center shrink-0">
+                              {student.name.charAt(0).toUpperCase()}
+                            </div>
+                            <span className="font-semibold text-slate-800">{student.name}</span>
+                            {hasScore && (
+                              <span className="text-[9px] font-black text-emerald-600 bg-emerald-50 border border-emerald-100 px-1.5 py-0.5 rounded-full uppercase tracking-widest">
+                                ✓ Dinilai
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3.5">
+                          {attCfg ? (
+                            <span className={`inline-flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-full border ${attCfg.cls}`}>
+                              {attCfg.icon} {attCfg.label}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-slate-300 italic">—</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3.5">
+                          <ScoreSummary scores={student.eval?.aspectScores} predicate={student.eval?.predicate} />
+                        </td>
+                        <td className="px-5 py-3.5 text-right">
+                          <button
+                            onClick={() => setEditStudent(student)}
+                            disabled={loadingRubric}
+                            className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 border border-indigo-100 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-wait"
+                          >
+                            {loadingRubric
+                              ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Memuat...</>
+                              : <><Edit2 className="w-3.5 h-3.5" /> {student.eval ? "Edit" : "Isi Nilai"}</>
+                            }
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       ) : (
-        <div className="bg-white rounded-2xl border border-slate-200 border-dashed p-12 flex flex-col items-center justify-center text-center">
-          <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center mb-4">
-            <FileText className="w-8 h-8 text-slate-300" />
-          </div>
-          <h3 className="text-base font-semibold text-slate-900 mb-1">Pilih Kriteria Evaluasi</h3>
-          <p className="text-sm text-slate-500 max-w-sm">
-            Setelah Anda memilih Program, Murid, Modul, dan Sesi, formulir penilaian rubrik akan muncul di area ini.
+        <div className="bg-white rounded-2xl border border-dashed border-slate-200 p-14 flex flex-col items-center justify-center text-center">
+          <Info className="w-10 h-10 text-slate-200 mb-3" />
+          <h3 className="text-sm font-bold text-slate-600 mb-1">Pilih Kelas & Pertemuan</h3>
+          <p className="text-xs text-slate-400 max-w-xs">
+            Pilih kelas dan pertemuan di atas untuk melihat daftar murid dan status penilaian mereka.
           </p>
         </div>
       )}
 
+      {/* ── Edit Modal — reuses MeetingEvalForm ── */}
+      {editStudent && meetingDesc && selectedClass && (
+        <MeetingEvalForm
+          key={`${editStudent.id}-${selectedMeetingId}-${liveRubricData?.length ?? 0}`}
+          studentId={editStudent.id}
+          studentName={editStudent.name}
+          meetingId={selectedMeetingId}
+          meetingLabel={meetingLabel}
+          meetingDesc={meetingDesc}
+          programCategory={selectedClass.category}
+          programName={selectedClass.name}
+          existingEval={editStudent.eval ?? undefined}
+          onClose={async () => {
+            setEditStudent(null);
+            refreshStudents();
+          }}
+        />
+      )}
     </div>
   );
 }

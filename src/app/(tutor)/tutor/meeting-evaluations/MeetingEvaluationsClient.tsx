@@ -13,7 +13,8 @@ type Meeting = {
   meetingNumber: number;
   material: string;
   isPerformance: boolean;
-  meetingEvaluations: { studentId: string; predicate: string }[];
+  rubricData?: any[] | null;
+  meetingEvaluations: { studentId: string; predicate: string | null; aspectScores?: any }[];
 };
 
 type Module = {
@@ -39,7 +40,8 @@ type EvalFormState = {
   studentName: string;
   meetingId: string;
   meetingLabel: string;
-  existingEval: { predicate: string; description?: string | null; suggestion?: string | null } | null;
+  meetingDesc: { rubricData?: any[] | null } | null;
+  existingEval: { attendance?: string; predicate?: string | null; description?: string | null; suggestion?: string | null; aspectScores?: Record<string, string> | null; tutorNote?: string | null } | null;
 } | null;
 
 export default function MeetingEvaluationsClient({
@@ -92,6 +94,7 @@ export default function MeetingEvaluationsClient({
       studentName: student.name,
       meetingId: meeting.id,
       meetingLabel: `${moduleTitle} — Pertemuan ${meeting.meetingNumber}`,
+      meetingDesc: { rubricData: meeting.rubricData ?? null },
       existingEval: existing ?? null,
     });
   };
@@ -305,10 +308,12 @@ export default function MeetingEvaluationsClient({
       {/* Eval Form Modal */}
       {evalForm && (
         <MeetingEvalForm
+          key={`${evalForm.studentId}-${evalForm.meetingId}-${evalForm.meetingDesc?.rubricData?.length ?? 0}`}
           studentId={evalForm.studentId}
           studentName={evalForm.studentName}
           meetingId={evalForm.meetingId}
           meetingLabel={evalForm.meetingLabel}
+          meetingDesc={evalForm.meetingDesc}
           programCategory={programCategory}
           programName={programName}
           existingEval={evalForm.existingEval}

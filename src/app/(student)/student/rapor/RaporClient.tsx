@@ -319,6 +319,18 @@ function MeetingEvalCard({
                   <p className="text-sm text-blue-800 leading-relaxed">{eval_!.suggestion}</p>
                 </div>
               )}
+
+              {/* Tutor Note — universal across all program types */}
+              {eval_!.tutorNote && (
+                <div className="mt-1 p-3 rounded-xl bg-amber-50 border border-amber-200">
+                  <p className="text-xs font-bold text-amber-700 mb-1 flex items-center gap-1">
+                    <Star className="w-3.5 h-3.5" /> Catatan Tutor
+                  </p>
+                  <p className="text-sm text-amber-800 italic leading-relaxed">
+                    &ldquo;{eval_!.tutorNote}&rdquo;
+                  </p>
+                </div>
+              )}
             </div>
           ) : (
             /* PRESENT but no score yet (defer mode) */

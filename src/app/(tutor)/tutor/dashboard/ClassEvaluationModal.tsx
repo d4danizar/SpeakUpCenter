@@ -3,7 +3,12 @@
 import { useState, useEffect } from "react";
 import { X, ChevronDown, ChevronRight, Loader2, Info } from "lucide-react";
 import { type SessionTask } from "./TutorDashboardClient";
-import { getCurriculumForProgram, getEvaluationsForStudents, getPresentStudents } from "./eval-actions";
+import {
+  getCurriculumForProgram,
+  getEvaluationsForStudents,
+  getPresentStudents,
+  getRubricDataForMeeting,
+} from "./eval-actions";
 import MeetingEvalForm from "../meeting-evaluations/MeetingEvalForm";
 
 type Module = {
@@ -28,10 +33,14 @@ type Props = {
 export default function ClassEvaluationModal({ task, onClose }: Props) {
   const [modules, setModules] = useState<Module[]>([]);
   const [loadingCurriculum, setLoadingCurriculum] = useState(true);
-  
+
   const [selectedMeetingId, setSelectedMeetingId] = useState<string>("");
   const [evaluations, setEvaluations] = useState<any[]>([]);
   const [loadingEvals, setLoadingEvals] = useState(false);
+
+  // rubricData fetched fresh from DB when meeting is selected
+  const [liveRubricData, setLiveRubricData] = useState<any[] | null>(null);
+  const [loadingRubric, setLoadingRubric] = useState(false);
 
   // Real-time present students from database
   const [presentStudents, setPresentStudents] = useState<{id: string, name: string}[]>([]);
@@ -39,13 +48,18 @@ export default function ClassEvaluationModal({ task, onClose }: Props) {
 
   const [openAccordion, setOpenAccordion] = useState<string | null>(null);
 
+  // ── Auto-select single module (e.g. Adult Speak has only 1 module) ──────────
+  const isSingleModule = modules.length === 1;
+  const singleModuleMeetings = isSingleModule ? modules[0].meetings : [];
+
+  // ── Load curriculum + students ──────────────────────────────────────────────
   useEffect(() => {
     async function loadCurriculumAndStudents() {
       if (!task.programId) return;
       try {
         const [curriculumData, studentsData] = await Promise.all([
           getCurriculumForProgram(task.programId),
-          task.sessionId ? getPresentStudents(task.sessionId) : Promise.resolve([])
+          task.sessionId ? getPresentStudents(task.sessionId) : Promise.resolve([]),
         ]);
         setModules(curriculumData);
         setPresentStudents(studentsData);
@@ -59,43 +73,84 @@ export default function ClassEvaluationModal({ task, onClose }: Props) {
     loadCurriculumAndStudents();
   }, [task.programId, task.sessionId]);
 
+  // ── When meeting changes: fetch evaluations + rubricData fresh from DB ──────
   useEffect(() => {
-    async function loadEvaluations() {
-      if (!selectedMeetingId || presentStudents.length === 0) return;
-      setLoadingEvals(true);
-      try {
-        const evals = await getEvaluationsForStudents(
-          presentStudents.map(s => s.id),
-          selectedMeetingId
-        );
-        setEvaluations(evals);
-      } catch (err) {
-        console.error("Failed to load evaluations:", err);
-      } finally {
-        setLoadingEvals(false);
-      }
+    if (!selectedMeetingId) {
+      setLiveRubricData(null);
+      return;
     }
-    loadEvaluations();
+
+    // Fetch rubricData on-demand (bypasses serialization issues)
+    setLoadingRubric(true);
+    getRubricDataForMeeting(selectedMeetingId).then((data) => {
+      setLiveRubricData(data);
+      setLoadingRubric(false);
+    });
+
+    // Fetch evaluations for present students
+    if (presentStudents.length === 0) return;
+    setLoadingEvals(true);
+    getEvaluationsForStudents(
+      presentStudents.map((s) => s.id),
+      selectedMeetingId
+    ).then((evals) => {
+      setEvaluations(evals);
+      setLoadingEvals(false);
+    }).catch((err) => {
+      console.error("Failed to load evaluations:", err);
+      setLoadingEvals(false);
+    });
   }, [selectedMeetingId]);
 
-  // Determine the meeting label and descriptions
+  // ── Refresh evaluations after a save ────────────────────────────────────────
+  const refreshEvaluations = async () => {
+    if (!selectedMeetingId || presentStudents.length === 0) return;
+    try {
+      const evals = await getEvaluationsForStudents(
+        presentStudents.map((s) => s.id),
+        selectedMeetingId
+      );
+      setEvaluations(evals);
+    } catch (err) {
+      console.error("Failed to refresh evaluations:", err);
+    }
+  };
+
+  // ── Derive meeting label ─────────────────────────────────────────────────────
   let selectedMeetingLabel = "";
-  let selectedMeetingObj: Meeting | null = null;
+  let selectedMeetingNumber = 0;
+  let selectedMeetingMaterial = "";
   if (selectedMeetingId) {
     for (const mod of modules) {
-      const meet = mod.meetings.find(m => m.id === selectedMeetingId);
+      const meet = mod.meetings.find((m) => m.id === selectedMeetingId);
       if (meet) {
         selectedMeetingLabel = `${mod.title} — Pertemuan ${meet.meetingNumber}`;
-        selectedMeetingObj = meet;
+        selectedMeetingNumber = meet.meetingNumber;
+        selectedMeetingMaterial = meet.material;
         break;
       }
     }
   }
 
+  // meetingDesc built from live rubricData (not from stale state)
+  const meetingDesc = selectedMeetingId
+    ? {
+        rubricData: liveRubricData,
+        meetingNumber: selectedMeetingNumber,
+        material: selectedMeetingMaterial,
+      }
+    : null;
+
+  const handleMeetingSelect = (meetingId: string) => {
+    setSelectedMeetingId(meetingId);
+    setOpenAccordion(null);
+    setLiveRubricData(null); // reset while loading
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-slate-900/40 backdrop-blur-sm transition-opacity">
       <div className="bg-white rounded-2xl shadow-xl border border-slate-200 w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-        
+
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-slate-100 bg-slate-50/50">
           <div>
@@ -104,7 +159,7 @@ export default function ClassEvaluationModal({ task, onClose }: Props) {
               {task.className} — {task.timeSlot}
             </p>
           </div>
-          <button 
+          <button
             type="button"
             onClick={onClose}
             className="p-1.5 text-slate-400 hover:text-slate-700 bg-white hover:bg-slate-100 rounded-lg transition-colors border border-slate-200 shadow-sm"
@@ -115,7 +170,7 @@ export default function ClassEvaluationModal({ task, onClose }: Props) {
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-6">
-          
+
           {/* Step 1: Curriculum Selection */}
           <div className="bg-indigo-50/50 border border-indigo-100 rounded-xl p-4 flex flex-col gap-2">
             <label className="text-xs font-bold text-indigo-700 uppercase tracking-widest flex items-center gap-1.5">
@@ -129,13 +184,30 @@ export default function ClassEvaluationModal({ task, onClose }: Props) {
               <p className="text-sm text-amber-600 font-medium">
                 Belum ada kurikulum yang diatur untuk program ini.
               </p>
+            ) : isSingleModule ? (
+              /* ── SINGLE-MODULE: skip module label, show meeting list directly ── */
+              <>
+                <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest mb-1.5">
+                  {modules[0].title}
+                </p>
+                <select
+                  value={selectedMeetingId}
+                  onChange={(e) => handleMeetingSelect(e.target.value)}
+                  className="w-full p-2.5 bg-white border border-indigo-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none font-medium text-slate-700 shadow-sm transition-all"
+                >
+                  <option value="">Pilih Pertemuan...</option>
+                  {singleModuleMeetings.map((meet) => (
+                    <option key={meet.id} value={meet.id}>
+                      Pertemuan {meet.meetingNumber} — {meet.material}
+                    </option>
+                  ))}
+                </select>
+              </>
             ) : (
+              /* ── MULTI-MODULE: grouped optgroup dropdown ── */
               <select
                 value={selectedMeetingId}
-                onChange={(e) => {
-                  setSelectedMeetingId(e.target.value);
-                  setOpenAccordion(null); // Reset accordion
-                }}
+                onChange={(e) => handleMeetingSelect(e.target.value)}
                 className="w-full p-2.5 bg-white border border-indigo-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none font-medium text-slate-700 shadow-sm transition-all"
               >
                 <option value="">Pilih Modul & Pertemuan...</option>
@@ -150,6 +222,24 @@ export default function ClassEvaluationModal({ task, onClose }: Props) {
                 ))}
               </select>
             )}
+
+            {/* Rubric status indicator */}
+            {selectedMeetingId && !loadingRubric && (
+              <div className={`flex items-center gap-1.5 text-[10px] font-bold px-2 py-1 rounded-lg mt-1 w-fit ${
+                liveRubricData && liveRubricData.length > 0
+                  ? "bg-emerald-50 text-emerald-600 border border-emerald-100"
+                  : "bg-amber-50 text-amber-600 border border-amber-100"
+              }`}>
+                {liveRubricData && liveRubricData.length > 0
+                  ? `✓ ${liveRubricData.length} aspek rubrik dimuat`
+                  : "⚠ Pertemuan tanpa rubrik penilaian"}
+              </div>
+            )}
+            {selectedMeetingId && loadingRubric && (
+              <div className="flex items-center gap-1.5 text-[10px] text-indigo-500 font-semibold mt-1">
+                <Loader2 className="w-3 h-3 animate-spin" /> Memuat rubrik...
+              </div>
+            )}
           </div>
 
           {/* Step 2: Student Evaluations */}
@@ -158,7 +248,7 @@ export default function ClassEvaluationModal({ task, onClose }: Props) {
               <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2 border-b border-slate-100 pb-2">
                 2. Evaluasi Murid ({presentStudents.length} Hadir)
               </h3>
-              
+
               {loadingStudents ? (
                 <div className="flex flex-col items-center justify-center py-8 gap-3">
                   <Loader2 className="w-6 h-6 animate-spin text-indigo-500" />
@@ -177,9 +267,9 @@ export default function ClassEvaluationModal({ task, onClose }: Props) {
                 <div className="flex flex-col gap-3">
                   {presentStudents.map((student) => {
                     const isOpen = openAccordion === student.id;
-                    const existingEval = evaluations.find(e => e.studentId === student.id) || null;
+                    const existingEval = evaluations.find((e) => e.studentId === student.id) || null;
                     const isCompleted = existingEval && (
-                      existingEval.predicate || 
+                      existingEval.predicate ||
                       (existingEval.aspectScores && Object.values(existingEval.aspectScores).some(Boolean))
                     );
 
@@ -225,11 +315,14 @@ export default function ClassEvaluationModal({ task, onClose }: Props) {
                               studentName={student.name}
                               meetingId={selectedMeetingId}
                               meetingLabel={selectedMeetingLabel}
-                              meetingDesc={selectedMeetingObj}
+                              meetingDesc={meetingDesc}
                               programCategory={task.programCategory || task.programType}
                               programName={task.programType}
                               existingEval={existingEval}
-                              onClose={() => setOpenAccordion(null)} // Automatically close on save
+                              onClose={async () => {
+                                await refreshEvaluations();
+                                setOpenAccordion(null);
+                              }}
                             />
                           </div>
                         )}

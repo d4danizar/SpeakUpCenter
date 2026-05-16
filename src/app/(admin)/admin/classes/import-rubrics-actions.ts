@@ -3,173 +3,229 @@
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 
-export async function importRubricsBulk(rows: any[]) {
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+type AspectEntry = {
+  aspectName: string;
+  A: { desc: string; saran: string };
+  B: { desc: string; saran: string };
+  C: { desc: string; saran: string };
+  D: { desc: string; saran: string };
+  E: { desc: string; saran: string };
+};
+
+type MeetingData = {
+  meetingNumber: number;
+  material: string;
+  aspects: AspectEntry[];
+};
+
+type ModuleData = {
+  moduleNumber: number;
+  title: string;
+  description: string;
+  meetings: Map<number, MeetingData>;
+};
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/** Extracts the first integer from a string or returns the number directly.
+ *  "Modul 3" → 3 | "Pertemuan 4" → 4 | 2 → 2 | "2" → 2
+ */
+function extractNumber(raw: unknown): number | null {
+  if (raw === null || raw === undefined || raw === "") return null;
+  if (typeof raw === "number") return Number.isInteger(raw) ? raw : Math.round(raw);
+  const match = String(raw).match(/\d+/);
+  return match ? parseInt(match[0], 10) : null;
+}
+
+/** Safely coerces to a trimmed string, falling back to empty string. */
+function str(raw: unknown): string {
+  return String(raw ?? "").trim();
+}
+
+// ─── Main Action ──────────────────────────────────────────────────────────────
+
+export async function importRubricsBulk(rows: Record<string, unknown>[]) {
   if (!rows || rows.length === 0) {
-    return { success: false, message: "Data kosong." };
+    return { success: false, message: "Data kosong.", errors: [] };
   }
 
-  // 1. Group rows by Program + Modul + Pertemuan.
-  //    BUG FIX: Baris yang tidak memiliki Aspek TETAP harus membuat entri pertemuan.
-  //    Hanya 3 kolom identitas (Program, Modul, Pertemuan) yang wajib ada.
-  const groups: Record<string, {
-    programName: string;
-    moduleName: string;
-    meetingNumberRaw: any;
-    namaModul: string;
-    deskripsiModul: string;
-    deskripsiPertemuan: string;
-    aspects: any[];
-  }> = {};
+  // ── PHASE 1: Group all rows IN MEMORY ────────────────────────────────────
+  // Structure:  programName → moduleNumber → MeetingNumber → MeetingData
+
+  const programMap = new Map<string, Map<number, ModuleData>>();
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
-    const programName      = row["Program"]    || row["program"];
-    const moduleName       = row["Modul"]      || row["modul"];
-    const meetingNumberRaw = row["Pertemuan"]  || row["pertemuan"];
+    const rowNum = i + 2; // Excel row number (1-indexed header + 1)
 
-    // Hanya skip jika 3 kolom identitas utama kosong
-    if (!programName || !moduleName || !meetingNumberRaw) continue;
+    // ── Read identifiers ──
+    const programRaw =
+      row["Program"] ?? row["program"] ?? row["PROGRAM"];
+    const modulRaw =
+      row["Modul"] ?? row["modul"] ?? row["MODUL"];
+    const pertemuanRaw =
+      row["Pertemuan"] ?? row["pertemuan"] ?? row["PERTEMUAN"];
 
-    const namaModul          = String(row["Nama Modul"]          || row["nama modul"]          || "").trim();
-    const deskripsiModul     = String(row["Deskripsi Modul"]     || row["deskripsi modul"]     || "").trim();
-    const deskripsiPertemuan = String(row["Deskripsi Pertemuan"] || row["deskripsi pertemuan"] || "").trim();
-    const aspectName         = String(row["Aspek"]               || row["aspek"]               || "").trim();
+    const programName = str(programRaw);
+    const moduleNumber = extractNumber(modulRaw);
+    const meetingNumber = extractNumber(pertemuanRaw);
 
-    const key = `${programName}_${moduleName}_${meetingNumberRaw}`.toLowerCase();
-
-    if (!groups[key]) {
-      groups[key] = {
-        programName,
-        moduleName,
-        meetingNumberRaw,
-        namaModul,
-        deskripsiModul,
-        deskripsiPertemuan,
-        aspects: [],
-      };
+    // Skip row only if ALL three identifiers are missing/zero
+    if (!programName || moduleNumber === null || meetingNumber === null) {
+      continue;
     }
 
-    // Tambahkan aspek ke grup HANYA jika nama aspek tidak kosong
+    // ── Read metadata (use first non-empty value seen for this module/meeting) ──
+    const namaModul         = str(row["Nama Modul"]          ?? row["nama modul"]          ?? "");
+    const deskripsiModul    = str(row["Deskripsi Modul"]     ?? row["deskripsi modul"]     ?? "");
+    const deskripsiPertemuan= str(row["Deskripsi Pertemuan"] ?? row["deskripsi pertemuan"] ?? "");
+    const aspectName        = str(row["Aspek"]               ?? row["aspek"]               ?? "");
+
+    // ── Ensure program bucket ──
+    if (!programMap.has(programName)) {
+      programMap.set(programName, new Map());
+    }
+    const moduleMap = programMap.get(programName)!;
+
+    // ── Ensure module bucket ──
+    if (!moduleMap.has(moduleNumber)) {
+      moduleMap.set(moduleNumber, {
+        moduleNumber,
+        title:       namaModul  || `Modul ${moduleNumber}`,
+        description: deskripsiModul,
+        meetings:    new Map(),
+      });
+    }
+    const modData = moduleMap.get(moduleNumber)!;
+
+    // First non-empty value wins for module metadata
+    if (namaModul       && !modData.title.trim())       modData.title = namaModul;
+    if (deskripsiModul  && !modData.description.trim()) modData.description = deskripsiModul;
+
+    // ── Ensure meeting bucket ──
+    if (!modData.meetings.has(meetingNumber)) {
+      modData.meetings.set(meetingNumber, {
+        meetingNumber,
+        material: deskripsiPertemuan || `Pertemuan ${meetingNumber}`,
+        aspects:  [],
+      });
+    }
+    const meetData = modData.meetings.get(meetingNumber)!;
+
+    // First non-empty deskripsiPertemuan wins
+    if (deskripsiPertemuan && meetData.material.startsWith("Pertemuan ")) {
+      meetData.material = deskripsiPertemuan;
+    }
+
+    // ── Append aspect ONLY if aspectName is present ──
     if (aspectName) {
-      groups[key].aspects.push({
+      meetData.aspects.push({
         aspectName,
-        A: { desc: row["Desc A"]  || row["desc a"]  || "", saran: row["Saran A"] || row["saran a"] || "" },
-        B: { desc: row["Desc B"]  || row["desc b"]  || "", saran: row["Saran B"] || row["saran b"] || "" },
-        C: { desc: row["Desc C"]  || row["desc c"]  || "", saran: row["Saran C"] || row["saran c"] || "" },
-        D: { desc: row["Desc D"]  || row["desc d"]  || "", saran: row["Saran D"] || row["saran d"] || "" },
-        E: { desc: row["Desc E"]  || row["desc e"]  || "", saran: row["Saran E"] || row["saran e"] || "" },
+        A: { desc: str(row["Desc A"] ?? row["desc a"] ?? ""), saran: str(row["Saran A"] ?? row["saran a"] ?? "") },
+        B: { desc: str(row["Desc B"] ?? row["desc b"] ?? ""), saran: str(row["Saran B"] ?? row["saran b"] ?? "") },
+        C: { desc: str(row["Desc C"] ?? row["desc c"] ?? ""), saran: str(row["Saran C"] ?? row["saran c"] ?? "") },
+        D: { desc: str(row["Desc D"] ?? row["desc d"] ?? ""), saran: str(row["Saran D"] ?? row["saran d"] ?? "") },
+        E: { desc: str(row["Desc E"] ?? row["desc e"] ?? ""), saran: str(row["Saran E"] ?? row["saran e"] ?? "") },
       });
     }
   }
 
-  let successCount = 0;
-  let errorCount   = 0;
+  if (programMap.size === 0) {
+    return {
+      success: false,
+      message: "Tidak ada data valid yang bisa diparsing. Pastikan kolom 'Program', 'Modul', dan 'Pertemuan' terisi.",
+      errors: [],
+    };
+  }
+
+  // ── PHASE 2: Persist to Database (Clean-slate per ProgramClass) ───────────
+
   const errors: string[] = [];
+  let totalModules  = 0;
+  let totalMeetings = 0;
 
-  for (const key in groups) {
-    const group = groups[key];
-    try {
-      // Extract module number dari string seperti "Modul 1" atau angka "1"
-      let moduleNumber = 1;
-      let mName = group.moduleName;
-      if (typeof mName === "string" && mName.toLowerCase().includes("modul")) {
-        const match = mName.match(/\d+/);
-        if (match) moduleNumber = parseInt(match[0]);
-      } else if (typeof mName === "number") {
-        moduleNumber = mName;
-        mName = `Modul ${moduleNumber}`;
-      }
+  for (const [programName, moduleMap] of programMap.entries()) {
+    // ── Find ProgramClass ──
+    const programClass = await prisma.programClass.findFirst({
+      where: { name: { contains: programName, mode: "insensitive" } },
+    });
 
-      // Extract meeting number dari string "Pertemuan 1" atau angka "1"
-      let meetingNumber = 1;
-      const meetRaw = group.meetingNumberRaw;
-      if (typeof meetRaw === "string") {
-        const match = meetRaw.match(/\d+/);
-        if (match) meetingNumber = parseInt(match[0]);
-      } else if (typeof meetRaw === "number") {
-        meetingNumber = meetRaw;
-      }
+    if (!programClass) {
+      errors.push(`Program "${programName}": tidak ditemukan di sistem. Semua modul dalam program ini dilewati.`);
+      continue;
+    }
 
-      // 1. Cari ProgramClass berdasarkan nama (case-insensitive)
-      const program = await prisma.programClass.findFirst({
-        where: { name: { contains: String(group.programName).trim(), mode: "insensitive" } },
-      });
+    // ── CLEAN SLATE: delete all existing modules for this class ──
+    // Cascade will delete ModuleMeeting children automatically (onDelete: Cascade in schema)
+    await prisma.programModule.deleteMany({
+      where: { programId: programClass.id },
+    });
 
-      if (!program) {
-        errors.push(`Grup [${group.programName} — ${mName} — Pertemuan ${meetingNumber}]: Program tidak ditemukan di sistem.`);
-        errorCount++;
-        continue;
-      }
+    // ── Create modules in sorted order ──
+    const sortedModules = Array.from(moduleMap.values()).sort(
+      (a, b) => a.moduleNumber - b.moduleNumber
+    );
 
-      // 2. Find or Create ProgramModule — update title/description jika Excel mengisi nilai
-      let module = await prisma.programModule.findFirst({
-        where: { programId: program.id, moduleNumber },
-      });
+    for (const modData of sortedModules) {
+      try {
+        const sortedMeetings = Array.from(modData.meetings.values()).sort(
+          (a, b) => a.meetingNumber - b.meetingNumber
+        );
 
-      if (!module) {
-        module = await prisma.programModule.create({
+        // ── AUTO-INJECT Pertemuan 4 if not already present from Excel ──────
+        const hasM4 = sortedMeetings.some((m) => m.meetingNumber === 4);
+        if (!hasM4) {
+          const m4Material =
+            modData.moduleNumber === 6
+              ? "PUBLIC SPEAKING COMPETITION"
+              : "Perform di Mall";
+          sortedMeetings.push({
+            meetingNumber: 4,
+            material:      m4Material,
+            aspects:       [],
+          });
+          // Re-sort to keep 1, 2, 3, 4 order
+          sortedMeetings.sort((a, b) => a.meetingNumber - b.meetingNumber);
+        }
+
+        await prisma.programModule.create({
           data: {
-            programId:    program.id,
-            moduleNumber,
-            title:        group.namaModul || String(mName).trim(),
-            description:  group.deskripsiModul || null,
-            isActive:     moduleNumber === 1,
+            programId:    programClass.id,
+            moduleNumber: modData.moduleNumber,
+            title:        modData.title || `Modul ${modData.moduleNumber}`,
+            description:  modData.description || null,
+            isActive:     modData.moduleNumber === 1,
+            meetings: {
+              create: sortedMeetings.map((meet) => ({
+                meetingNumber: meet.meetingNumber,
+                material:      meet.material,
+                rubricData:    meet.aspects.length > 0 ? meet.aspects : [],
+              })),
+            },
           },
         });
-      } else {
-        const moduleUpdates: any = {};
-        if (group.namaModul)      moduleUpdates.title       = group.namaModul;
-        if (group.deskripsiModul) moduleUpdates.description = group.deskripsiModul;
-        if (Object.keys(moduleUpdates).length > 0) {
-          module = await prisma.programModule.update({
-            where: { id: module.id },
-            data:  moduleUpdates,
-          });
-        }
+
+        totalModules++;
+        totalMeetings += sortedMeetings.length;
+      } catch (err: any) {
+        const errMsg = `Program "${programName}" — Modul ${modData.moduleNumber} "${modData.title}": Gagal disimpan — ${err.message}`;
+        console.error(errMsg, err);
+        errors.push(errMsg);
       }
-
-      // 3. Find or Create ModuleMeeting — SELALU upsert, bahkan jika tidak ada aspek
-      const existingMeeting = await prisma.moduleMeeting.findFirst({
-        where: { moduleId: module.id, meetingNumber },
-      });
-
-      // Hanya simpan rubricData jika ada aspek; jika tidak, jangan timpa data lama dengan null
-      const rubricPayload = group.aspects.length > 0 ? group.aspects : undefined;
-
-      if (existingMeeting) {
-        const meetingUpdates: any = {};
-        if (group.deskripsiPertemuan) meetingUpdates.material   = group.deskripsiPertemuan;
-        if (rubricPayload !== undefined) meetingUpdates.rubricData = rubricPayload;
-
-        if (Object.keys(meetingUpdates).length > 0) {
-          await prisma.moduleMeeting.update({
-            where: { id: existingMeeting.id },
-            data:  meetingUpdates,
-          });
-        }
-      } else {
-        await prisma.moduleMeeting.create({
-          data: {
-            moduleId:     module.id,
-            meetingNumber,
-            material:     group.deskripsiPertemuan || `Materi Pertemuan ${meetingNumber}`,
-            rubricData:   rubricPayload ?? null,
-          },
-        });
-      }
-
-      successCount++;
-    } catch (err: any) {
-      console.error(`Error on group ${key}:`, err);
-      errors.push(`Grup [${key}]: Terjadi kesalahan internal — ${err.message}.`);
-      errorCount++;
     }
   }
 
   revalidatePath("/admin/classes");
+
+  const successMsg =
+    `✅ Import selesai! ${totalModules} modul & ${totalMeetings} pertemuan berhasil dibuat.` +
+    (errors.length > 0 ? ` ${errors.length} program/modul gagal.` : "");
+
   return {
     success: true,
-    message: `Selesai! ${successCount} pertemuan berhasil diproses. ${errorCount} grup gagal.`,
+    message: successMsg,
     errors,
   };
 }

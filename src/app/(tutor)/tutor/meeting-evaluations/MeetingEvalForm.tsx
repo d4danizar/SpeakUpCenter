@@ -6,13 +6,6 @@ import {
   UserCheck, UserX, MessageSquare, Info, Clock,
 } from "lucide-react";
 import { upsertMeetingEvaluation } from "./actions";
-import {
-  ADULT_ASPECTS,
-  ADULT_ASPECT_DESCRIPTIONS,
-  PREDICATES,
-  type AdultAspect,
-  type PredicateValue,
-} from "@/lib/adult-rubric";
 
 // ─── Attendance options ───────────────────────────────────────────────────────
 const ATTENDANCE_OPTIONS = [
@@ -24,46 +17,45 @@ const ATTENDANCE_OPTIONS = [
 
 type AttendanceValue = "PRESENT" | "EXCUSED" | "SICK" | "ABSENT";
 
-const PRED_COLORS: Record<string, string> = {
-  A: "bg-emerald-500 text-white",
-  B: "bg-blue-500    text-white",
-  C: "bg-yellow-400  text-white",
-  D: "bg-orange-500  text-white",
-  E: "bg-slate-400   text-white",
+// ─── Grade button colors ──────────────────────────────────────────────────────
+const GRADE_COLORS: Record<string, string> = {
+  A: "bg-emerald-500 text-white border-transparent scale-110 shadow-sm",
+  B: "bg-blue-500    text-white border-transparent scale-110 shadow-sm",
+  C: "bg-yellow-400  text-white border-transparent scale-110 shadow-sm",
+  D: "bg-orange-500  text-white border-transparent scale-110 shadow-sm",
+  E: "bg-rose-500    text-white border-transparent scale-110 shadow-sm",
 };
+const GRADES = ["A", "B", "C", "D", "E"] as const;
+type Grade = typeof GRADES[number];
 
-// ─── Component: Adult Aspect (Hardcoded) ──────────────────────────────────────────
-function AspectPredicateSelect({
-  aspect,
+// ─── Single Aspect Row ────────────────────────────────────────────────────────
+function AspectRow({
+  aspectName,
   value,
   onChange,
 }: {
-  aspect: AdultAspect;
-  value: PredicateValue | "";
-  onChange: (v: PredicateValue) => void;
+  aspectName: string;
+  value: Grade | "";
+  onChange: (v: Grade) => void;
 }) {
   return (
-    <div className="flex items-center gap-2">
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-bold text-slate-700 leading-tight">{aspect}</p>
-        <p className="text-[10px] text-slate-400 leading-tight mt-0.5 truncate">
-          {ADULT_ASPECT_DESCRIPTIONS[aspect]}
-        </p>
-      </div>
-      <div className="flex gap-1 shrink-0">
-        {PREDICATES.map((p) => (
+    <div className="flex items-center justify-between gap-3 p-3 bg-white border border-slate-200 rounded-xl">
+      <p className="text-sm font-semibold text-slate-700 flex-1 min-w-0 truncate">
+        {aspectName}
+      </p>
+      <div className="flex gap-1.5 shrink-0">
+        {GRADES.map((g) => (
           <button
-            key={p.value}
+            key={g}
             type="button"
-            onClick={() => onChange(p.value as PredicateValue)}
-            title={p.label}
+            onClick={() => onChange(g)}
             className={`w-8 h-8 rounded-lg text-xs font-black border-2 transition-all ${
-              value === p.value
-                ? PRED_COLORS[p.value] + " border-transparent scale-110 shadow-sm"
-                : "bg-white border-slate-200 text-slate-400 hover:border-slate-300"
+              value === g
+                ? GRADE_COLORS[g]
+                : "bg-white border-slate-200 text-slate-400 hover:border-slate-300 hover:bg-slate-50"
             }`}
           >
-            {p.value}
+            {g}
           </button>
         ))}
       </div>
@@ -71,72 +63,20 @@ function AspectPredicateSelect({
   );
 }
 
-// ─── Component: Dynamic Aspect (rubricData) ─────────────────────────────────────────
-function DynamicAspectSelect({
-  aspectData,
-  value,
-  onChange,
-}: {
-  aspectData: any;
-  value: PredicateValue | "";
-  onChange: (v: PredicateValue) => void;
-}) {
-  const selectedDetails = value ? aspectData[value] : null;
-
-  return (
-    <div className="flex flex-col gap-2 p-3 bg-white border border-slate-200 rounded-xl">
-      <div className="flex items-center gap-2">
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-bold text-slate-700 leading-tight">{aspectData.aspectName}</p>
-        </div>
-        <div className="flex gap-1 shrink-0">
-          {PREDICATES.map((p) => (
-            <button
-              key={p.value}
-              type="button"
-              onClick={() => onChange(p.value as PredicateValue)}
-              title={p.label}
-              className={`w-8 h-8 rounded-lg text-xs font-black border-2 transition-all ${
-                value === p.value
-                  ? PRED_COLORS[p.value] + " border-transparent scale-110 shadow-sm"
-                  : "bg-slate-50 border-slate-200 text-slate-400 hover:border-slate-300"
-              }`}
-            >
-              {p.value}
-            </button>
-          ))}
-        </div>
-      </div>
-      
-      {/* Dynamic Descriptions per aspect */}
-      {selectedDetails && (selectedDetails.desc || selectedDetails.saran) && (
-        <div className={`mt-1 p-2.5 rounded-lg border flex flex-col gap-1 text-xs ${
-          value === "A" ? "bg-emerald-50 border-emerald-100 text-emerald-800" :
-          value === "B" ? "bg-blue-50 border-blue-100 text-blue-800" :
-          value === "C" ? "bg-yellow-50 border-yellow-100 text-yellow-800" :
-          value === "D" ? "bg-orange-50 border-orange-100 text-orange-800" :
-          "bg-slate-50 border-slate-200 text-slate-800"
-        }`}>
-          {selectedDetails.desc && (
-            <p className="leading-relaxed"><strong>Deskripsi:</strong> {selectedDetails.desc}</p>
-          )}
-          {selectedDetails.saran && (
-            <p className="leading-relaxed mt-0.5"><strong>Saran:</strong> {selectedDetails.saran}</p>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ─── Props ────────────────────────────────────────────────────────────────────
+type RubricAspect = {
+  aspectName: string;
+  [key: string]: any;
+};
+
 type ExistingEval = {
   attendance?: string;
+  aspectScores?: Record<string, string> | null;
+  tutorNote?: string | null;
+  // legacy fields kept for backward read-only compat
   predicate?: string | null;
   description?: string | null;
   suggestion?: string | null;
-  aspectScores?: Record<string, string> | null;
-  tutorNote?: string | null;
 };
 
 type Props = {
@@ -147,7 +87,7 @@ type Props = {
   programCategory?: string;
   programName?: string;
   meetingDesc?: {
-    rubricData?: any[] | null;
+    rubricData?: RubricAspect[] | null;
   } | null;
   existingEval?: ExistingEval | null;
   onClose: () => void;
@@ -165,14 +105,23 @@ export default function MeetingEvalForm({
   existingEval,
   onClose,
 }: Props) {
-  const isAdultSpeak =
-    programCategory === "ADULT" || programName.toLowerCase().includes("adult");
+  // Parse rubricData — robust: handles already-array, JSON string, or null
+  const rawRubric = meetingDesc?.rubricData;
+  let rubricAspects: RubricAspect[] = [];
+  if (Array.isArray(rawRubric)) {
+    rubricAspects = rawRubric;
+  } else if (typeof rawRubric === "string" && (rawRubric as string).startsWith("[")) {
+    try { rubricAspects = JSON.parse(rawRubric); } catch { rubricAspects = []; }
+  } else if (rawRubric && typeof rawRubric === "object") {
+    // Single object wrapped — shouldn't happen but guard it
+    rubricAspects = [rawRubric as unknown as RubricAspect];
+  }
+  // Keep only items that have a valid aspectName
+  rubricAspects = rubricAspects.filter(
+    (r) => r && typeof r === "object" && typeof r.aspectName === "string" && r.aspectName.trim()
+  );
 
-  const rubricData = Array.isArray(meetingDesc?.rubricData) && meetingDesc!.rubricData.length > 0 
-    ? meetingDesc!.rubricData 
-    : null;
-
-  const isMultiAspect = !!rubricData || isAdultSpeak;
+  const hasRubric = rubricAspects.length > 0;
 
   // ── Attendance state ──
   const [attendance, setAttendance] = useState<AttendanceValue>(
@@ -180,84 +129,58 @@ export default function MeetingEvalForm({
   );
   const isPresent = attendance === "PRESENT";
 
-  // ── Kiddos Single Predicate Fields (Fallback) ──
-  const [predicate, setPredicate]     = useState(existingEval?.predicate   || "");
-  const [description, setDescription] = useState(existingEval?.description || "");
-  const [suggestion, setSuggestion]   = useState(existingEval?.suggestion  || "");
-
-  // ── Multi Aspect Fields ──
-  const initAspects: Record<string, PredicateValue | ""> = {};
-  if (rubricData) {
-    rubricData.forEach((r: any) => {
-      initAspects[r.aspectName] = ((existingEval?.aspectScores as any)?.[r.aspectName] as PredicateValue) || "";
-    });
-  } else if (isAdultSpeak) {
-    ADULT_ASPECTS.forEach((asp) => {
-      initAspects[asp] = ((existingEval?.aspectScores as any)?.[asp] as PredicateValue) || "";
-    });
+  // ── Aspect scores state — keyed by aspectName ──
+  const initScores: Record<string, Grade | ""> = {};
+  for (const asp of rubricAspects) {
+    initScores[asp.aspectName] =
+      ((existingEval?.aspectScores as any)?.[asp.aspectName] as Grade) || "";
   }
+  const [aspectScores, setAspectScores] = useState<Record<string, Grade | "">>(initScores);
 
-  const [aspectScores, setAspectScores] = useState<Record<string, PredicateValue | "">>(initAspects);
-  const [tutorNote, setTutorNote]       = useState(existingEval?.tutorNote || "");
+  // ── Tutor note ──
+  const [tutorNote, setTutorNote] = useState(existingEval?.tutorNote || "");
 
   // ── Submission state ──
-  const [status, setStatus]     = useState<"idle" | "success" | "error">("idle");
+  const [status, setStatus] = useState<"idle" | "success" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState("");
   const [isPending, startTransition] = useTransition();
 
-  const aspectsFilled = Object.values(aspectScores).filter(Boolean).length;
-  const totalAspects = rubricData ? rubricData.length : (isAdultSpeak ? ADULT_ASPECTS.length : 0);
+  const filledCount = Object.values(aspectScores).filter(Boolean).length;
+  const totalAspects = rubricAspects.length;
 
-  // ── Absent info ──
-  const ABSENT_INFO: Record<string, string> = {
-    EXCUSED: isAdultSpeak
-      ? "Izin — Sesi mendapat ekstensi (Adult Speak)"
-      : "Izin — Sesi Kiddos tetap hangus, tidak ada ekstensi",
-    SICK: isAdultSpeak
-      ? "Sakit — Sesi mendapat ekstensi (Adult Speak)"
-      : "Sakit — Sesi Kiddos tetap hangus, tidak ada ekstensi",
-    ABSENT: "Alpa — Tidak ada penilaian atau ekstensi",
-  };
-
-  // ── Submit helpers ──────────────────────────────────────────────────────────
-  const buildPayload = (withScore: boolean) => ({
-    studentId,
-    meetingId,
-    attendance,
-    programCategory: isAdultSpeak ? "ADULT" : programCategory,
-    // Only include score fields when "Simpan & Submit Nilai"
-    predicate:    withScore && isPresent && !isMultiAspect ? predicate   : undefined,
-    description:  withScore && isPresent && !isMultiAspect ? description : undefined,
-    suggestion:   withScore && isPresent && !isMultiAspect ? suggestion  : undefined,
-    aspectScores: withScore && isPresent && isMultiAspect
-      ? Object.fromEntries(Object.entries(aspectScores).filter(([, v]) => v !== ""))
-      : undefined,
-    tutorNote:    withScore && isPresent ? tutorNote : undefined,
-  });
-
+  // ── Submit ──────────────────────────────────────────────────────────────────
   const submit = (withScore: boolean) => {
-    // Validation only when submitting with score
-    if (withScore && isPresent) {
-      if (!isMultiAspect && !predicate) {
-        setErrorMsg("Pilih predikat terlebih dahulu.");
-        setStatus("error");
-        return;
-      }
-      if (isMultiAspect && aspectsFilled === 0) {
-        setErrorMsg("Nilai minimal satu aspek terlebih dahulu.");
-        setStatus("error");
-        return;
-      }
+    if (withScore && isPresent && hasRubric && filledCount === 0) {
+      setErrorMsg("Nilai minimal satu aspek terlebih dahulu.");
+      setStatus("error");
+      return;
     }
     setStatus("idle");
+    setErrorMsg("");
+
     startTransition(async () => {
-      const res = await upsertMeetingEvaluation(buildPayload(withScore));
+      const payload = {
+        studentId,
+        meetingId,
+        attendance,
+        programCategory,
+        // Unified: ALL programs send aspectScores JSON
+        aspectScores:
+          withScore && isPresent && hasRubric
+            ? Object.fromEntries(
+                Object.entries(aspectScores).filter(([, v]) => v !== "")
+              ) as Record<string, string>
+            : undefined,
+        tutorNote: withScore && isPresent ? tutorNote : undefined,
+      };
+
+      const res = await upsertMeetingEvaluation(payload);
       if (res.success) {
         setStatus("success");
         setTimeout(onClose, 700);
       } else {
         setStatus("error");
-        setErrorMsg(res.error || "Gagal menyimpan.");
+        setErrorMsg((res as any).error || "Gagal menyimpan.");
       }
     });
   };
@@ -269,15 +192,10 @@ export default function MeetingEvalForm({
         {/* ── Header ── */}
         <div className="flex items-start justify-between px-6 py-4 border-b border-slate-100 bg-slate-50 shrink-0">
           <div>
-            <div className="flex items-center gap-2 mb-0.5">
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{meetingLabel}</p>
-              {isAdultSpeak && (
-                <span className="text-[9px] font-black text-purple-700 bg-purple-100 border border-purple-200 px-1.5 py-0.5 rounded-full">
-                  ADULT SPEAK
-                </span>
-              )}
-            </div>
-            <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+              {meetingLabel}
+            </p>
+            <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2 mt-0.5">
               <Star className="w-4 h-4 text-amber-500" />
               Evaluasi: {studentName}
             </h3>
@@ -287,13 +205,16 @@ export default function MeetingEvalForm({
               </span>
             )}
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-slate-200 text-slate-400 transition">
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-lg hover:bg-slate-200 text-slate-400 transition"
+          >
             <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* ── Body (scrollable) ── */}
-        <div className="p-6 space-y-5 overflow-y-auto">
+        <div className="p-6 space-y-5 overflow-y-auto flex-1">
 
           {/* Status feedback */}
           {status === "success" && (
@@ -307,7 +228,7 @@ export default function MeetingEvalForm({
             </div>
           )}
 
-          {/* ── Bagian 1: Toggle Presensi ── */}
+          {/* ── Bagian 1: Toggle Kehadiran ── */}
           <div>
             <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-2.5">
               Status Kehadiran <span className="text-red-500">*</span>
@@ -330,77 +251,70 @@ export default function MeetingEvalForm({
               ))}
             </div>
 
-            {/* Chain Reaction info banner */}
+            {/* Info banner absent */}
+            {!isPresent && (
+              <div className="mt-2 flex items-center gap-2 text-xs font-semibold px-3 py-2 rounded-lg bg-slate-100 text-slate-600 border border-slate-200">
+                <UserX className="w-3.5 h-3.5 shrink-0" />
+                Murid tidak hadir — nilai tidak akan diisi.
+              </div>
+            )}
             {isPresent && !existingEval && (
               <div className="mt-2.5 flex items-start gap-2 bg-indigo-50 border border-indigo-200 text-indigo-700 text-xs font-semibold px-3 py-2 rounded-lg">
                 <Star className="w-3.5 h-3.5 shrink-0 mt-0.5 text-amber-500" />
-                Murid hadir — isi nilai sekarang atau pilih <span className="font-black mx-0.5">"Isi Nanti"</span> jika sedang buru-buru.
-              </div>
-            )}
-
-            {/* Absent info badge */}
-            {!isPresent && ABSENT_INFO[attendance] && (
-              <div className={`mt-2 text-xs font-semibold px-3 py-2 rounded-lg flex items-center gap-2 ${
-                isAdultSpeak && attendance !== "ABSENT"
-                  ? "bg-blue-50 text-blue-700 border border-blue-200"
-                  : "bg-slate-100 text-slate-600 border border-slate-200"
-              }`}>
-                {isAdultSpeak && attendance !== "ABSENT"
-                  ? <UserCheck className="w-3.5 h-3.5 shrink-0" />
-                  : <UserX className="w-3.5 h-3.5 shrink-0" />}
-                {ABSENT_INFO[attendance]}
+                Murid hadir — isi nilai sekarang atau pilih{" "}
+                <span className="font-black mx-0.5">"Isi Nanti"</span> jika sedang buru-buru.
               </div>
             )}
           </div>
 
-          {/* ── Bagian 2A: MULTI-ASPECT EVALUATION ── */}
-          {isPresent && isMultiAspect && (
+          {/* ── Bagian 2: Aspek Penilaian (Unified Dynamic JSON) ── */}
+          {isPresent && (
             <>
               <div>
                 <div className="flex items-center justify-between mb-3">
                   <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">
-                    Rubrik Penilaian <span className="text-red-500">*</span>
+                    {hasRubric ? (
+                      <>Rubrik Penilaian <span className="text-red-500">*</span></>
+                    ) : (
+                      "Rubrik Penilaian"
+                    )}
                   </label>
-                  <span className="text-[10px] text-slate-400 flex items-center gap-1">
-                    <Info className="w-3 h-3" />
-                    {aspectsFilled}/{totalAspects} aspek dinilai
-                  </span>
-                </div>
-                
-                <div className="space-y-3 bg-slate-50 rounded-xl p-3 border border-slate-200">
-                  {rubricData ? (
-                    // Dynamic JSON Aspects
-                    rubricData.map((aspectData: any) => (
-                      <DynamicAspectSelect
-                        key={aspectData.aspectName}
-                        aspectData={aspectData}
-                        value={aspectScores[aspectData.aspectName]}
-                        onChange={(v) =>
-                          setAspectScores((prev) => ({ ...prev, [aspectData.aspectName]: v }))
-                        }
-                      />
-                    ))
-                  ) : (
-                    // Hardcoded Adult Aspects Fallback
-                    ADULT_ASPECTS.map((aspect) => (
-                      <AspectPredicateSelect
-                        key={aspect}
-                        aspect={aspect}
-                        value={aspectScores[aspect]}
-                        onChange={(v) =>
-                          setAspectScores((prev) => ({ ...prev, [aspect]: v }))
-                        }
-                      />
-                    ))
+                  {hasRubric && (
+                    <span className="text-[10px] text-slate-400 flex items-center gap-1">
+                      <Info className="w-3 h-3" />
+                      {filledCount}/{totalAspects} aspek dinilai
+                    </span>
                   )}
                 </div>
+
+                {hasRubric ? (
+                  <div className="space-y-2 bg-slate-50 rounded-xl p-3 border border-slate-200">
+                    {rubricAspects.map((asp) => (
+                      <AspectRow
+                        key={asp.aspectName}
+                        aspectName={asp.aspectName}
+                        value={aspectScores[asp.aspectName] ?? ""}
+                        onChange={(v) =>
+                          setAspectScores((prev) => ({ ...prev, [asp.aspectName]: v }))
+                        }
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  /* Pertemuan tanpa rubrik (Perform di Mall, Competition, dll) */
+                  <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 text-amber-700 text-xs font-semibold px-4 py-3 rounded-xl">
+                    <Info className="w-4 h-4 shrink-0" />
+                    Pertemuan ini tidak memiliki rubrik penilaian aspek.
+                    Kamu tetap bisa menyimpan kehadiran dan catatan pelatih di bawah.
+                  </div>
+                )}
               </div>
 
-              {/* Tutor Note / Catatan Pelatih */}
+              {/* ── Catatan Pelatih (universal) ── */}
               <div>
                 <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
                   <MessageSquare className="w-3.5 h-3.5 text-indigo-500" />
-                  Catatan Pelatih (Tutor Note)
+                  Catatan Pelatih <span className="text-slate-400 font-normal">(Opsional)</span>
                 </label>
                 <textarea
                   value={tutorNote}
@@ -412,87 +326,13 @@ export default function MeetingEvalForm({
               </div>
             </>
           )}
-
-          {/* ── Bagian 2B: SINGLE PREDICATE (Fallback if no JSON rubric and not adult) ── */}
-          {isPresent && !isMultiAspect && (
-            <>
-              <div>
-                <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-3">
-                  Predikat Penilaian <span className="text-red-500">*</span>
-                </label>
-                <div className="grid grid-cols-5 gap-2">
-                  {PREDICATES.map((p) => (
-                    <button
-                      key={p.value}
-                      type="button"
-                      onClick={() => setPredicate(p.value)}
-                      className={`flex flex-col items-center justify-center py-3 rounded-xl border-2 font-black text-lg transition-all ${
-                        predicate === p.value
-                          ? PRED_COLORS[p.value] + " border-transparent scale-105 shadow-md"
-                          : "bg-white border-slate-200 text-slate-400 hover:border-slate-300"
-                      }`}
-                    >
-                      {p.value}
-                    </button>
-                  ))}
-                </div>
-                {predicate && (
-                  <p className={`mt-2 text-xs font-bold px-3 py-1 rounded-full inline-block ${PRED_COLORS[predicate]}`}>
-                    {PREDICATES.find((p) => p.value === predicate)?.label}
-                  </p>
-                )}
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">
-                  Deskripsi / Catatan Positif
-                </label>
-                <textarea
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  rows={3}
-                  placeholder="cth: Murid sangat berani tampil, suara jelas dan vokal kuat..."
-                  className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-50 resize-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">
-                  Saran Perbaikan
-                </label>
-                <textarea
-                  value={suggestion}
-                  onChange={(e) => setSuggestion(e.target.value)}
-                  rows={2}
-                  placeholder="cth: Perlu latihan eye contact dan gestur tangan..."
-                  className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-50 resize-none"
-                />
-              </div>
-
-              {/* Added Tutor Note for Fallback mode too so it matches user request for universal notes */}
-              <div>
-                <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
-                  <MessageSquare className="w-3.5 h-3.5 text-indigo-500" />
-                  Catatan Pelatih (Tutor Note)
-                </label>
-                <textarea
-                  value={tutorNote}
-                  onChange={(e) => setTutorNote(e.target.value)}
-                  rows={3}
-                  placeholder="Observasi umum tambahan..."
-                  className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-50 resize-none"
-                />
-              </div>
-            </>
-          )}
         </div>
 
         {/* ── Footer — Action Buttons ── */}
         <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 shrink-0">
-          {/* PRESENT: Dua tombol (Submit Nilai + Isi Nanti) */}
           {isPresent ? (
             <div className="flex flex-col sm:flex-row gap-2">
-              {/* Defer button — simpan presensi saja, nilai null */}
+              {/* Defer — simpan presensi saja */}
               <button
                 onClick={() => submit(false)}
                 disabled={isPending || status === "success"}
@@ -506,7 +346,7 @@ export default function MeetingEvalForm({
                 Simpan Presensi Saja (Isi Nanti)
               </button>
 
-              {/* Submit with score */}
+              {/* Submit dengan nilai */}
               <button
                 onClick={() => submit(true)}
                 disabled={isPending || status === "success"}
@@ -517,7 +357,6 @@ export default function MeetingEvalForm({
               </button>
             </div>
           ) : (
-            /* NOT PRESENT: Tombol tunggal standar */
             <div className="flex justify-end gap-3">
               <button
                 onClick={onClose}
@@ -532,7 +371,7 @@ export default function MeetingEvalForm({
                 className="flex items-center gap-2 px-5 py-2.5 text-sm font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl transition shadow-sm disabled:opacity-60"
               >
                 {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                {isPending ? "Menyimpan..." : "Simpan"}
+                {isPending ? "Menyimpan..." : "Simpan Kehadiran"}
               </button>
             </div>
           )}

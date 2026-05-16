@@ -3,7 +3,7 @@
 import { prisma } from "@/lib/prisma";
 
 export async function getCurriculumForProgram(programId: string) {
-  return (prisma as any).programModule.findMany({
+  const raw = await (prisma as any).programModule.findMany({
     where: { programId },
     include: {
       meetings: {
@@ -12,6 +12,30 @@ export async function getCurriculumForProgram(programId: string) {
     },
     orderBy: { moduleNumber: "asc" },
   });
+
+  // Normalize rubricData: Prisma Json fields can be Prisma.JsonValue — force plain JS
+  return raw.map((mod: any) => ({
+    ...mod,
+    meetings: mod.meetings.map((meet: any) => ({
+      ...meet,
+      rubricData: meet.rubricData
+        ? JSON.parse(JSON.stringify(meet.rubricData))
+        : null,
+    })),
+  }));
+}
+
+// Dedicated action to fetch rubricData for a single meeting (on-demand, bypasses state caching)
+export async function getRubricDataForMeeting(meetingId: string): Promise<any[] | null> {
+  if (!meetingId) return null;
+  const meeting = await (prisma as any).moduleMeeting.findUnique({
+    where: { id: meetingId },
+    select: { rubricData: true },
+  });
+  if (!meeting?.rubricData) return null;
+  const parsed = JSON.parse(JSON.stringify(meeting.rubricData));
+  if (!Array.isArray(parsed) || parsed.length === 0) return null;
+  return parsed;
 }
 
 export async function getEvaluationsForStudents(studentIds: string[], meetingId: string) {

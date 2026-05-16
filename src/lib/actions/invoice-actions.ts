@@ -290,9 +290,16 @@ export async function approvePayment(invoiceId: string) {
 
       // F. Tautan Relasi Program (programClassId & preferredScheduleId)
       const finalProgramClassId = (invoice as any).programClassId || (invoice as any).program?.id || null;
-      let preferredScheduleId: string | null = dataPayload.scheduleId && dataPayload.scheduleId !== "PRIVATE_MANUAL"
-        ? dataPayload.scheduleId
-        : null;
+      let preferredScheduleId: string | null = null;
+      
+      if (finalProgramClassId) {
+        const firstSchedule = await tx.classSchedule.findFirst({
+          where: { programId: finalProgramClassId }
+        });
+        if (firstSchedule) {
+          preferredScheduleId = firstSchedule.id;
+        }
+      }
 
       console.log("=== TRANSAKSI STEP 4 MULA (UPSERT USER) ===");
       // 3. UPSERT USER DATABASE

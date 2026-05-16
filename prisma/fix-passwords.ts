@@ -25,7 +25,7 @@ async function main() {
   }
 
   console.log(`\nDone! Updated ${updated} of ${allUsers.length} users.`)
-  console.log('Default password: kampunginggris123')
+  console.log('Default password: speakup123')
 }
 
 main()
