@@ -80,3 +80,27 @@ export async function getPresentStudents(sessionId: string) {
     existingStatus: "PRESENT"
   }));
 }
+
+/** Fetch all active enrolled students for a given ProgramClass (by programId). */
+export async function getEnrolledStudentsForProgram(programId: string) {
+  const enrollments = await prisma.enrollment.findMany({
+    where: {
+      programClassId: programId,
+      student: { status: "ACTIVE" },
+    },
+    include: {
+      student: { select: { id: true, name: true } },
+    },
+    orderBy: { student: { name: "asc" } },
+  });
+
+  // Deduplicate by studentId
+  const seen = new Set<string>();
+  return enrollments
+    .filter((e) => {
+      if (seen.has(e.student.id)) return false;
+      seen.add(e.student.id);
+      return true;
+    })
+    .map((e) => ({ id: e.student.id, name: e.student.name }));
+}

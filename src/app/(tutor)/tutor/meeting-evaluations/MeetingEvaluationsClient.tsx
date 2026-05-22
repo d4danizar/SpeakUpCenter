@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import MeetingEvalForm from "./MeetingEvalForm";
 import { getExistingEvaluation } from "./actions";
+import { formatMeetingLabel, formatMeetingWithModule } from "@/lib/utils/meeting-format";
 
 type Meeting = {
   id: string;
@@ -93,7 +94,7 @@ export default function MeetingEvaluationsClient({
       studentId: student.id,
       studentName: student.name,
       meetingId: meeting.id,
-      meetingLabel: `${moduleTitle} — Pertemuan ${meeting.meetingNumber}`,
+      meetingLabel: formatMeetingWithModule(programCategory, moduleTitle, meeting.meetingNumber, meeting.material, meeting.isPerformance),
       meetingDesc: { rubricData: meeting.rubricData ?? null },
       existingEval: existing ?? null,
     });
@@ -216,7 +217,7 @@ export default function MeetingEvaluationsClient({
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
                             <p className="text-xs font-bold text-slate-700">
-                              Pertemuan {meeting.meetingNumber}
+                              {formatMeetingLabel(programCategory, meeting.meetingNumber, meeting.material, meeting.isPerformance)}
                               {meeting.isPerformance && <span className="ml-1 text-amber-600">(Performance)</span>}
                             </p>
                             {evalCount === filteredStudents.length && filteredStudents.length > 0 && (

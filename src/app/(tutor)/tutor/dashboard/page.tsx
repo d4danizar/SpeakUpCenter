@@ -3,6 +3,7 @@ import { authOptions } from "../../../../lib/auth";
 import { prisma } from "../../../../lib/prisma";
 import { redirect } from "next/navigation";
 import { TutorDashboardClient, type SessionTask, type EligibleStudent, type StudentSearchItem } from "./TutorDashboardClient";
+import { getPendingAttendances } from "./pending-actions";
 
 export default async function TutorDashboardPage() {
   const session = await getServerSession(authOptions);
@@ -104,7 +105,7 @@ export default async function TutorDashboardPage() {
   weekStart.setDate(weekStart.getDate() - weekStart.getDay());
   weekStart.setHours(0, 0, 0, 0);
 
-  const [weeklyCompleted, announcements] = await Promise.all([
+  const [weeklyCompleted, announcements, pendingAttendances] = await Promise.all([
     prisma.session.count({
       where: {
         tutorId,
@@ -120,14 +121,15 @@ export default async function TutorDashboardPage() {
       },
       orderBy: { createdAt: "desc" },
       select: { id: true, title: true, message: true }
-    })
+    }),
+    getPendingAttendances(),
   ]);
 
   const isEvalDay = today.getDay() === 5 || today.getDay() === 6;
 
   const quickStats = [
     { label: "Classes Today", value: totalToday, iconName: "BookOpen" as const, color: "text-blue-600", bg: "bg-blue-50" },
-    { label: "Pending Evals", value: pendingEvals, iconName: "AlertCircle" as const, color: "text-amber-600", bg: "bg-amber-50" },
+    { label: "Tanggungan", value: pendingAttendances.length, iconName: "AlertCircle" as const, color: "text-amber-600", bg: "bg-amber-50" },
     { label: "This Week", value: `${weeklyCompleted} sessions`, iconName: "Award" as const, color: "text-emerald-600", bg: "bg-emerald-50" },
   ];
 
@@ -138,6 +140,7 @@ export default async function TutorDashboardPage() {
       quickStats={quickStats}
       isEvalDay={isEvalDay}
       announcements={announcements}
+      pendingAttendances={pendingAttendances}
     />
   );
 }

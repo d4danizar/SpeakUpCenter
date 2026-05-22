@@ -10,6 +10,7 @@ import {
   getRubricDataForMeeting,
 } from "./eval-actions";
 import MeetingEvalForm from "../meeting-evaluations/MeetingEvalForm";
+import { formatMeetingOption, formatMeetingWithModule } from "@/lib/utils/meeting-format";
 
 type Module = {
   id: string;
@@ -124,7 +125,12 @@ export default function ClassEvaluationModal({ task, onClose }: Props) {
     for (const mod of modules) {
       const meet = mod.meetings.find((m) => m.id === selectedMeetingId);
       if (meet) {
-        selectedMeetingLabel = `${mod.title} — Pertemuan ${meet.meetingNumber}`;
+        selectedMeetingLabel = formatMeetingWithModule(
+          task.programCategory,
+          mod.title,
+          meet.meetingNumber,
+          meet.material
+        );
         selectedMeetingNumber = meet.meetingNumber;
         selectedMeetingMaterial = meet.material;
         break;
@@ -195,10 +201,10 @@ export default function ClassEvaluationModal({ task, onClose }: Props) {
                   onChange={(e) => handleMeetingSelect(e.target.value)}
                   className="w-full p-2.5 bg-white border border-indigo-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none font-medium text-slate-700 shadow-sm transition-all"
                 >
-                  <option value="">Pilih Pertemuan...</option>
+                  <option value="">{task.programCategory?.startsWith("ADULT") || task.programCategory?.startsWith("PRIVATE") ? "Pilih Materi..." : "Pilih Pertemuan..."}</option>
                   {singleModuleMeetings.map((meet) => (
                     <option key={meet.id} value={meet.id}>
-                      Pertemuan {meet.meetingNumber} — {meet.material}
+                      {formatMeetingOption(task.programCategory, meet.meetingNumber, meet.material)}
                     </option>
                   ))}
                 </select>
@@ -210,12 +216,12 @@ export default function ClassEvaluationModal({ task, onClose }: Props) {
                 onChange={(e) => handleMeetingSelect(e.target.value)}
                 className="w-full p-2.5 bg-white border border-indigo-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none font-medium text-slate-700 shadow-sm transition-all"
               >
-                <option value="">Pilih Modul & Pertemuan...</option>
+                <option value="">{task.programCategory?.startsWith("ADULT") || task.programCategory?.startsWith("PRIVATE") ? "Pilih Materi..." : "Pilih Modul & Pertemuan..."}</option>
                 {modules.map((mod) => (
                   <optgroup key={mod.id} label={`Modul ${mod.moduleNumber}: ${mod.title}`}>
                     {mod.meetings.map((meet) => (
                       <option key={meet.id} value={meet.id}>
-                        Pertemuan {meet.meetingNumber} — {meet.material}
+                        {formatMeetingOption(task.programCategory, meet.meetingNumber, meet.material)}
                       </option>
                     ))}
                   </optgroup>

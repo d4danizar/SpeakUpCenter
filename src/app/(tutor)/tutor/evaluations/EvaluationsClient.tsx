@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { getClassesWithModules, getMeetingStudentEvals, getRubricDataForMeeting } from "./actions";
 import MeetingEvalForm from "../meeting-evaluations/MeetingEvalForm";
+import { formatMeetingOption, formatMeetingWithModule } from "@/lib/utils/meeting-format";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -168,7 +169,7 @@ export function EvaluationsClient({ tutorId }: { tutorId: string }) {
   }
 
   const meetingLabel = selectedMeeting
-    ? `${selectedModuleTitle} — Pertemuan ${selectedMeeting.meetingNumber}`
+    ? formatMeetingWithModule(selectedClass?.category, selectedModuleTitle, selectedMeeting.meetingNumber, selectedMeeting.material, selectedMeeting.isPerformance)
     : "";
 
   const totalStudents = students.length;
@@ -227,12 +228,12 @@ export function EvaluationsClient({ tutorId }: { tutorId: string }) {
                 disabled={!selectedClassId || !selectedClass?.modules.length}
                 className="w-full appearance-none bg-slate-50 border border-slate-200 py-2.5 pl-4 pr-10 rounded-xl text-sm font-medium text-slate-700 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 disabled:opacity-50"
               >
-                <option value="">— Pilih Pertemuan —</option>
+                <option value="">{selectedClass?.category && (selectedClass.category !== "KIDDOS") ? "— Pilih Materi —" : "— Pilih Pertemuan —"}</option>
                 {selectedClass?.modules.map((mod) => (
                   <optgroup key={mod.id} label={`Modul ${mod.moduleNumber}: ${mod.title}`}>
                     {mod.meetings.map((meet) => (
                       <option key={meet.id} value={meet.id}>
-                        Pertemuan {meet.meetingNumber} — {meet.material}
+                        {formatMeetingOption(selectedClass.category, meet.meetingNumber, meet.material, meet.isPerformance)}
                       </option>
                     ))}
                   </optgroup>

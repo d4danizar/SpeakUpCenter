@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { ChevronDown, ChevronUp, CheckCircle, Clock, XCircle, BookOpen, Star } from "lucide-react";
+import { formatMeetingLabel } from "@/lib/utils/meeting-format";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -118,10 +119,12 @@ function MeetingEvalCard({
   meeting,
   isOpen,
   onToggle,
+  programCategory,
 }: {
   meeting: Meeting;
   isOpen: boolean;
   onToggle: () => void;
+  programCategory?: string;
 }) {
   const eval_ = meeting.meetingEvaluations[0] ?? null;
   const hasEval = !!eval_;
@@ -191,7 +194,7 @@ function MeetingEvalCard({
 
         <div className="flex-1 min-w-0">
           <p className="text-sm font-bold text-slate-800 truncate">
-            {meeting.isPerformance ? "Performance" : `Pertemuan ${meeting.meetingNumber}`}
+            {meeting.isPerformance ? "Performance" : formatMeetingLabel(programCategory, meeting.meetingNumber, meeting.material)}
           </p>
           <p className="text-xs text-slate-400 truncate leading-snug">
             {meeting.material || "—"}
@@ -453,6 +456,7 @@ export default function RaporClient({
                     <MeetingEvalCard
                       key={meeting.id}
                       meeting={meeting}
+                      programCategory={programCategory}
                       isOpen={openMeetingId === meeting.id}
                       onToggle={() => toggleMeeting(meeting.id)}
                     />
