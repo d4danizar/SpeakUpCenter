@@ -6,16 +6,33 @@ import type { NextRequest } from "next/server";
 const STAFF_ROLES = ["SUPER_ADMIN", "MANAGER", "CS", "MARKETING", "CREATOR"];
 
 export async function middleware(req: NextRequest) {
-  const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
   const { pathname } = req.nextUrl;
-  const userRole = (token?.role as string) ?? "";
 
-  if (pathname === "/login" || pathname === "/") {
-    console.warn("=== LOGIN ATTEMPT / MIDDLEWARE DEBUG ===");
-    console.warn("Pathname:", pathname);
-    console.warn("Token:", token);
-    console.warn("Role parsed:", userRole);
+  // ── Early return for non-relevant paths ─────────────────────────────────
+  const isRelevantPath =
+    pathname.startsWith("/admin") ||
+    pathname.startsWith("/tutor") ||
+    pathname.startsWith("/student") ||
+    pathname === "/" ||
+    pathname === "/login";
+
+  if (!isRelevantPath) {
+    return NextResponse.next();
   }
+
+  // ── Safe Token Parsing (Fail-Safe) ──────────────────────────────────────
+  let token = null;
+  try {
+    token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
+  } catch (error) {
+    const url = new URL("/login", req.url);
+    const response = NextResponse.redirect(url);
+    response.cookies.delete("next-auth.session-token");
+    response.cookies.delete("__Secure-next-auth.session-token");
+    return response;
+  }
+
+  const userRole = (token?.role as string) ?? "";
 
   // ── Protect authenticated routes ──────────────────────────────────────────
   const isProtectedPath =
@@ -76,15 +93,5 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: [
-    // Melindungi seluruh varian sub-pathing
-    "/admin",
-    "/admin/:path*",
-    "/tutor",
-    "/tutor/:path*",
-    "/student",
-    "/student/:path*",
-    "/login",
-    "/",
-  ],
+  matcher: ['/((?!api|_next/static|_next/image|favicon.ico|.*\\.png|.*\\.jpg).*)'],
 };
